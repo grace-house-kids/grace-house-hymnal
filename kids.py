@@ -29,10 +29,11 @@ Where things come from:
                  Each shuffle picks a new verse and new symbols. The
                  answer shows above the sheet, on screen only.
     Maze         a fresh maze on every shuffle, walled into 2 or 3 parts
-                 joined only by green numbered jump circles, with 3 to 5
+                 joined only by green numbered jump circles, plus one
+                 pair that jumps into a sealed-off dead end, and 3 to 6
                  red one-way arrows. Each one is checked before it's
-                 drawn: solvable, needs a jump, and an arrow blocks a
-                 shortcut. The two rules sit beside the MAZE label.
+                 drawn: solvable, needs a jump, no pair joins places you
+                 could walk between, and an arrow blocks a shortcut. The two rules sit beside the MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
 
@@ -585,12 +586,14 @@ KIDS_JS = r"""
        2. Wall it into 2 or 3 parts along the way from START to FINISH,
           so walking alone can never get you there.
        3. Join the parts with numbered jump circles (same number = hop
-          across), plus one extra pair that doesn't help.
-       4. Open a few extra gaps so each part has loops, then add 3 to 5
+          across). One extra pair leads into a small sealed-off pocket:
+          a dead end you can only get into, and out of, by jumping.
+          No pair ever joins two places you could just walk between.
+       4. Open a few extra gaps so each part has loops, then add 3 to 6
           one-way arrows.
        5. Check it: it must be solvable, it must need the jump circles,
           and at least one arrow must block a shortcut.
-     About 150 tries per shuffle; the best one gets drawn. */
+     About 200 tries per shuffle; the best one gets drawn. */
   var CELL = 22;                       // one square, in drawing units (about 1/4 inch)
   var MAZE_RED = '#e0241b', MAZE_GREEN = '#15803d';
 
@@ -690,6 +693,30 @@ KIDS_JS = r"""
     var cuts = (N >= 90 && rng() < 0.65) ? [spot(0.2, 0.42), spot(0.58, 0.8)] : [spot(0.3, 0.7)];
     cuts.forEach(function (i) { g.setOpen(path[i], path[i + 1], 0); });
 
+    // Seal off a small pocket away from the route (5 to ~14 squares).
+    // The extra jump pair leads in there: a dead end you can only reach,
+    // and only leave, by jumping.
+    var routeCell = new Uint8Array(N);
+    path.forEach(function (c) { routeCell[c] = 1; });
+    var tree = [];
+    for (var u = 0; u < N; u++) {
+      g.nbrs(u).forEach(function (v) { if (v > u && g.isOpen(u, v)) tree.push([u, v]); });
+    }
+    var pocketMax = Math.max(8, Math.round(N * 0.11)), pocketCell = -1;
+    shuffled(tree, rng).slice(0, 60).some(function (e) {
+      if (routeCell[e[0]] && routeCell[e[1]]) return false;
+      g.setOpen(e[0], e[1], 0);
+      var sides = [e[0], e[1]].map(function (c) {
+        var d = g.walk(c, false, false).dist, n = 0, touchesPath = false;
+        for (var k = 0; k < N; k++) if (d[k] >= 0) { n++; if (routeCell[k]) touchesPath = true; }
+        return { cell: c, size: n, touchesPath: touchesPath };
+      });
+      var pocket = sides.filter(function (sd) { return !sd.touchesPath; })[0];
+      if (pocket && pocket.size >= 5 && pocket.size <= pocketMax) { pocketCell = pocket.cell; return true; }
+      g.setOpen(e[0], e[1], 1);                 // not a good pocket: put the gap back
+      return false;
+    });
+
     var comp = new Int32Array(N).fill(-1), sizes = [];
     for (var s = 0; s < N; s++) {
       if (comp[s] >= 0) continue;
@@ -709,7 +736,7 @@ KIDS_JS = r"""
         if (b > a && !g.isOpen(a, b) && comp[a] === comp[b]) walls.push([a, b]);
       });
     }
-    shuffled(walls, rng).slice(0, Math.round(N / 18)).forEach(function (w) {
+    shuffled(walls, rng).slice(0, Math.round(N / 15)).forEach(function (w) {
       g.setOpen(w[0], w[1], 1);
     });
 
@@ -745,9 +772,11 @@ KIDS_JS = r"""
       pairs.push([from, to]);
       if (!last) from = placePad(chain[j], to);
     }
-    var dc = chain[randInt(rng, chain.length)];       // the pair that doesn't help
-    var e1 = placePad(dc, null), e2 = e1 < 0 ? -1 : placePad(dc, e1);
-    if (e1 >= 0 && e2 >= 0) pairs.push([e1, e2]);
+    if (pocketCell >= 0) {                             // the pair that leads nowhere
+      var e1 = placePad(chain[randInt(rng, chain.length)], null);
+      var e2 = e1 < 0 ? -1 : placePad(comp[pocketCell], null);
+      if (e1 >= 0 && e2 >= 0) pairs.push([e1, e2]);
+    }
     var nums = shuffled(pairs.map(function (x, i) { return i + 1; }), rng);
     pairs.forEach(function (pr, i) {
       g.partner[pr[0]] = pr[1];
@@ -755,8 +784,16 @@ KIDS_JS = r"""
       g.num[pr[0]] = g.num[pr[1]] = nums[i];
     });
 
-    // One-way arrows: 3 to 5, on open gaps, never touching START, FINISH,
-    // a jump circle, or another arrow
+    // One-way arrows: 3 to 5 at random (plus maybe one more on purpose), on
+    // open gaps, never touching START, FINISH or a jump circle, and spread
+    // out so they don't bunch up in one corner
+    function crowded(e1, e2) {       // arrows stay at least two squares apart
+      return e1.some(function (a) {
+        return e2.some(function (b) {
+          return Math.abs(Math.floor(a / C) - Math.floor(b / C)) + Math.abs(a % C - b % C) <= 2;
+        });
+      });
+    }
     if (useArrows) {
       var gaps = [], taken = [], want = 3 + randInt(rng, 3);
       for (var x = 0; x < N; x++) {
@@ -769,18 +806,38 @@ KIDS_JS = r"""
       }
       shuffled(gaps, rng).forEach(function (e) {
         if (taken.length >= want) return;
-        if (taken.some(function (o) {
-          return o[0] === e[0] || o[0] === e[1] || o[1] === e[0] || o[1] === e[1];
-        })) return;
+        if (taken.some(function (o) { return crowded(o, e); })) return;
         taken.push(e);
         g.arrow[g.key(e[0], e[1])] = rng() < 0.5 ? e[0] : e[1];
       });
+
+      // If no arrow blocks the easy way yet, point one gap on the easy way
+      // backward, as long as the maze can still be solved.
+      var easy = g.walk(start, false, true);
+      if (easy.dist[finish] >= 0 && g.walk(start, true, true).dist[finish] === easy.dist[finish]) {
+        var route = [];
+        for (var p2 = finish; p2 !== -1; p2 = easy.prev[p2]) route.unshift(p2);
+        var steps = route.slice(1).map(function (c, i) { return [route[i], c]; });
+        shuffled(steps, rng).some(function (e) {
+          if (!g.adjacent(e[0], e[1])) return false;            // that step was a jump
+          if (e.some(function (c) { return c === start || c === finish || g.partner[c] >= 0; })) return false;
+          if (taken.some(function (o) { return crowded(o, e); })) return false;
+          var k2 = g.key(e[0], e[1]);
+          g.arrow[k2] = e[1];                                   // only lets you go back
+          if (g.walk(start, true, true).dist[finish] > easy.dist[finish]) { taken.push(e); return true; }
+          delete g.arrow[k2];
+          return false;
+        });
+      }
     }
 
     // The checks
     var run = g.walk(start, true, true), len = run.dist[finish];
     if (len < 0) return null;                                    // must be solvable
     if (g.walk(start, false, false).dist[finish] >= 0) return null;  // must need a jump
+    if (pairs.some(function (pr) {                               // never jump where you could walk
+      return g.walk(pr[0], false, false).dist[pr[1]] >= 0;
+    })) return null;
     var free = g.walk(start, false, true).dist[finish];          // if arrows went both ways
     var onPath = 0, reach = 0;
     for (var q = finish; q !== start; q = run.prev[q]) {
@@ -797,7 +854,7 @@ KIDS_JS = r"""
 
   function makeMaze(R, C, rng) {
     var best = null, g, i;
-    for (i = 0; i < 150; i++) {
+    for (i = 0; i < 200; i++) {
       g = mazeAttempt(R, C, rng, true);
       if (!g) continue;
       if (!best || (g.good && !best.good) || (g.good === best.good && g.score > best.score)) best = g;
