@@ -28,6 +28,11 @@ Where things come from:
                  code, then look the verse up in a Bible.
                  Each shuffle picks a new verse and new symbols. The
                  answer shows above the sheet, on screen only.
+    Maze         a fresh maze on every shuffle, walled into 2 or 3 parts
+                 joined only by green numbered jump circles, with 3 to 5
+                 red one-way arrows. Each one is checked before it's
+                 drawn: solvable, needs a jump, and an arrow blocks a
+                 shortcut. The two rules sit beside the MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
 
@@ -330,6 +335,42 @@ main { max-width: calc(8.5in + 50px); }
 }
 .ev-when { font-weight: 700; }
 
+/* Maze: label with the two rules beside it, the maze filling the rest.
+   Arrows are red and jump circles green, so they never look like walls. */
+.act-maze {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.14in;
+  row-gap: 0.08in;
+}
+.act-maze .act-label { margin: 0; }
+.act-maze .act-body { grid-column: 1 / -1; align-self: stretch; }
+.maze-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 8.5pt;
+  line-height: 1.15;
+}
+.maze-rules span { display: flex; align-items: center; gap: 5px; }
+.maze-rules svg { width: 0.17in; height: 0.17in; flex-shrink: 0; }
+.maze-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.maze-num {
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 800;
+  font-size: 12px;
+  fill: #15803d;
+}
+.maze-end {
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 1px;
+  fill: #0a0a0a;
+}
+
 /* PLACEHOLDER look, until each activity is built */
 .ph {
   position: absolute;
@@ -361,8 +402,8 @@ main { max-width: calc(8.5in + 50px); }
   .act[data-act]::after {
     content: "\21BB  shuffle";
     position: absolute;
-    top: 6px;
-    right: 6px;
+    top: -10px;                /* sits on the top border, clear of the box's contents */
+    right: 10px;
     padding: 3px 7px 4px;
     background: #f01a8b;
     color: #0a0a0a;
@@ -538,6 +579,289 @@ KIDS_JS = r"""
       '<div class="code-key"><span class="code-key-label">Key</span>' + key + '</div>';
   }
 
+  /* ── Maze ────────────────────────────────────────────────
+     How one gets made:
+       1. Carve one long winding maze.
+       2. Wall it into 2 or 3 parts along the way from START to FINISH,
+          so walking alone can never get you there.
+       3. Join the parts with numbered jump circles (same number = hop
+          across), plus one extra pair that doesn't help.
+       4. Open a few extra gaps so each part has loops, then add 3 to 5
+          one-way arrows.
+       5. Check it: it must be solvable, it must need the jump circles,
+          and at least one arrow must block a shortcut.
+     About 150 tries per shuffle; the best one gets drawn. */
+  var CELL = 22;                       // one square, in drawing units (about 1/4 inch)
+  var MAZE_RED = '#e0241b', MAZE_GREEN = '#15803d';
+
+  function randInt(rng, n) { return Math.floor(rng() * n); }
+  function r1(n) { return Math.round(n * 10) / 10; }
+
+  function Grid(R, C) {
+    this.R = R; this.C = C; this.N = R * C;
+    this.openR = new Uint8Array(this.N);            // gap to the right of a square
+    this.openD = new Uint8Array(this.N);            // gap below a square
+    this.arrow = {};                                // gap -> the square you may leave from
+    this.partner = new Int32Array(this.N).fill(-1); // jump circle -> its twin
+    this.num = {};                                  // jump circle -> its number
+  }
+  Grid.prototype.nbrs = function (id) {
+    var C = this.C, r = Math.floor(id / C), c = id % C, out = [];
+    if (r > 0) out.push(id - C);
+    if (r < this.R - 1) out.push(id + C);
+    if (c > 0) out.push(id - 1);
+    if (c < C - 1) out.push(id + 1);
+    return out;
+  };
+  Grid.prototype.key = function (a, b) {
+    var lo = Math.min(a, b), hi = Math.max(a, b);
+    return lo * 2 + (hi - lo === 1 ? 0 : 1);
+  };
+  Grid.prototype.isOpen = function (a, b) {
+    var lo = Math.min(a, b), hi = Math.max(a, b);
+    return (hi - lo === 1 ? this.openR[lo] : this.openD[lo]) === 1;
+  };
+  Grid.prototype.setOpen = function (a, b, v) {
+    var lo = Math.min(a, b), hi = Math.max(a, b);
+    if (hi - lo === 1) this.openR[lo] = v; else this.openD[lo] = v;
+  };
+  Grid.prototype.adjacent = function (a, b) { return this.nbrs(a).indexOf(b) !== -1; };
+  Grid.prototype.degree = function (id) {
+    var g = this;
+    return this.nbrs(id).filter(function (n) { return g.isOpen(id, n); }).length;
+  };
+  // Where can you go from here? arrows: obey them. jumps: allow hopping.
+  Grid.prototype.moves = function (id, arrows, jumps) {
+    var g = this, out = [];
+    this.nbrs(id).forEach(function (n) {
+      if (!g.isOpen(id, n)) return;
+      if (arrows) {
+        var from = g.arrow[g.key(id, n)];
+        if (from !== undefined && from !== id) return;
+      }
+      out.push(n);
+    });
+    if (jumps && this.partner[id] >= 0) out.push(this.partner[id]);
+    return out;
+  };
+  Grid.prototype.walk = function (src, arrows, jumps) {
+    var dist = new Int32Array(this.N).fill(-1), prev = new Int32Array(this.N).fill(-1);
+    var q = [src], h = 0;
+    dist[src] = 0;
+    while (h < q.length) {
+      var cur = q[h++], ms = this.moves(cur, arrows, jumps);
+      for (var i = 0; i < ms.length; i++) {
+        if (dist[ms[i]] < 0) { dist[ms[i]] = dist[cur] + 1; prev[ms[i]] = cur; q.push(ms[i]); }
+      }
+    }
+    return { dist: dist, prev: prev };
+  };
+
+  function carve(g, rng) {            // one long winding maze (a "recursive backtracker")
+    var seen = new Uint8Array(g.N), stack = [randInt(rng, g.N)];
+    seen[stack[0]] = 1;
+    while (stack.length) {
+      var cur = stack[stack.length - 1];
+      var opts = g.nbrs(cur).filter(function (n) { return !seen[n]; });
+      if (!opts.length) { stack.pop(); continue; }
+      var nx = opts[randInt(rng, opts.length)];
+      g.setOpen(cur, nx, 1);
+      seen[nx] = 1;
+      stack.push(nx);
+    }
+    g.start = randInt(rng, g.C);
+    g.finish = (g.R - 1) * g.C + randInt(rng, g.C);
+  }
+
+  function mazeAttempt(R, C, rng, useArrows) {
+    var g = new Grid(R, C), N = g.N, start, finish;
+    carve(g, rng);
+    start = g.start; finish = g.finish;
+
+    // Wall it into parts at 1 or 2 spots along the way from START to FINISH
+    var t = g.walk(start, false, false), path = [];
+    for (var p = finish; p !== -1; p = t.prev[p]) path.unshift(p);
+    var L = path.length - 1;
+    if (L < 8) return null;
+    function spot(lo, hi) {
+      var a = Math.floor(L * lo), span = Math.max(1, Math.floor(L * (hi - lo)));
+      return Math.min(L - 1, a + randInt(rng, span));
+    }
+    var cuts = (N >= 90 && rng() < 0.65) ? [spot(0.2, 0.42), spot(0.58, 0.8)] : [spot(0.3, 0.7)];
+    cuts.forEach(function (i) { g.setOpen(path[i], path[i + 1], 0); });
+
+    var comp = new Int32Array(N).fill(-1), sizes = [];
+    for (var s = 0; s < N; s++) {
+      if (comp[s] >= 0) continue;
+      var d0 = g.walk(s, false, false).dist, n = 0;
+      for (var k = 0; k < N; k++) if (d0[k] >= 0) { comp[k] = sizes.length; n++; }
+      sizes.push(n);
+    }
+    var chain = [comp[start]];      // the parts, in the order you pass through them
+    cuts.forEach(function (i) { chain.push(comp[path[i + 1]]); });
+    if (chain[chain.length - 1] !== comp[finish]) return null;
+    if (chain.some(function (c) { return sizes[c] < N * 0.18; })) return null;
+
+    // A few extra gaps inside each part, so there are loops to get lost in
+    var walls = [];
+    for (var a = 0; a < N; a++) {
+      g.nbrs(a).forEach(function (b) {
+        if (b > a && !g.isOpen(a, b) && comp[a] === comp[b]) walls.push([a, b]);
+      });
+    }
+    shuffled(walls, rng).slice(0, Math.round(N / 18)).forEach(function (w) {
+      g.setOpen(w[0], w[1], 1);
+    });
+
+    // Jump circles: never on START/FINISH or right beside them, never
+    // touching each other, and happiest tucked into dead ends.
+    var dS = g.walk(start, false, false).dist, dF = g.walk(finish, false, false).dist;
+    var pads = [];
+    function placePad(c, awayFrom) {
+      var cands = [];
+      for (var id = 0; id < N; id++) {
+        if (comp[id] !== c || id === start || id === finish) continue;
+        if ((dS[id] >= 0 && dS[id] < 3) || (dF[id] >= 0 && dF[id] < 3)) continue;
+        if (pads.some(function (q) { return q === id || g.adjacent(q, id); })) continue;
+        cands.push(id);
+      }
+      if (!cands.length) return -1;
+      var dead = cands.filter(function (id) { return g.degree(id) === 1; });
+      var pool = dead.length >= 3 ? dead : cands;
+      if (awayFrom != null) {                 // pick from the farther half
+        var d = g.walk(awayFrom, false, false).dist;
+        pool = pool.slice().sort(function (x, y) { return d[y] - d[x]; });
+        pool = pool.slice(0, Math.max(1, Math.ceil(pool.length / 2)));
+      }
+      var pick = pool[randInt(rng, pool.length)];
+      pads.push(pick);
+      return pick;
+    }
+    var pairs = [], from = placePad(chain[0], start);
+    for (var j = 1; j < chain.length; j++) {
+      var last = j === chain.length - 1;
+      var to = placePad(chain[j], last ? finish : null);
+      if (from < 0 || to < 0) return null;
+      pairs.push([from, to]);
+      if (!last) from = placePad(chain[j], to);
+    }
+    var dc = chain[randInt(rng, chain.length)];       // the pair that doesn't help
+    var e1 = placePad(dc, null), e2 = e1 < 0 ? -1 : placePad(dc, e1);
+    if (e1 >= 0 && e2 >= 0) pairs.push([e1, e2]);
+    var nums = shuffled(pairs.map(function (x, i) { return i + 1; }), rng);
+    pairs.forEach(function (pr, i) {
+      g.partner[pr[0]] = pr[1];
+      g.partner[pr[1]] = pr[0];
+      g.num[pr[0]] = g.num[pr[1]] = nums[i];
+    });
+
+    // One-way arrows: 3 to 5, on open gaps, never touching START, FINISH,
+    // a jump circle, or another arrow
+    if (useArrows) {
+      var gaps = [], taken = [], want = 3 + randInt(rng, 3);
+      for (var x = 0; x < N; x++) {
+        g.nbrs(x).forEach(function (y) {
+          if (y < x || !g.isOpen(x, y)) return;
+          if (x === start || y === start || x === finish || y === finish) return;
+          if (g.partner[x] >= 0 || g.partner[y] >= 0) return;
+          gaps.push([x, y]);
+        });
+      }
+      shuffled(gaps, rng).forEach(function (e) {
+        if (taken.length >= want) return;
+        if (taken.some(function (o) {
+          return o[0] === e[0] || o[0] === e[1] || o[1] === e[0] || o[1] === e[1];
+        })) return;
+        taken.push(e);
+        g.arrow[g.key(e[0], e[1])] = rng() < 0.5 ? e[0] : e[1];
+      });
+    }
+
+    // The checks
+    var run = g.walk(start, true, true), len = run.dist[finish];
+    if (len < 0) return null;                                    // must be solvable
+    if (g.walk(start, false, false).dist[finish] >= 0) return null;  // must need a jump
+    var free = g.walk(start, false, true).dist[finish];          // if arrows went both ways
+    var onPath = 0, reach = 0;
+    for (var q = finish; q !== start; q = run.prev[q]) {
+      var pq = run.prev[q];
+      if (g.adjacent(pq, q) && g.arrow[g.key(pq, q)] !== undefined) onPath++;
+    }
+    for (var z = 0; z < N; z++) if (run.dist[z] >= 0) reach++;
+    var blocked = len - free;                                    // > 0: an arrow blocks a shortcut
+    g.good = !useArrows || (blocked > 0 && onPath >= 1 && len >= R + C);
+    g.score = len + 6 * Math.min(onPath, 3) + Math.min(blocked, 12) +
+              (blocked > 0 ? 10 : 0) - 0.15 * (N - reach);
+    return g;
+  }
+
+  function makeMaze(R, C, rng) {
+    var best = null, g, i;
+    for (i = 0; i < 150; i++) {
+      g = mazeAttempt(R, C, rng, true);
+      if (!g) continue;
+      if (!best || (g.good && !best.good) || (g.good === best.good && g.score > best.score)) best = g;
+    }
+    if (best) return best;
+    for (i = 0; i < 60; i++) {              // no arrows: always solvable
+      g = mazeAttempt(R, C, rng, false);
+      if (g) return g;
+    }
+    g = new Grid(R, C);                      // last resort: a plain maze
+    carve(g, rng);
+    return g;
+  }
+
+  function drawMaze(g) {
+    var R = g.R, C = g.C, W = C * CELL, H = R * CELL, LAB = 15, M = 2;
+    var ox = M, oy = LAB + M, vw = W + 2 * M, vh = H + 2 * LAB + 2 * M;
+    function cx(id) { return ox + (id % C + 0.5) * CELL; }
+    function cy(id) { return oy + (Math.floor(id / C) + 0.5) * CELL; }
+
+    var d = '';
+    function seg(x1, y1, x2, y2) { d += 'M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2; }
+    for (var id = 0; id < g.N; id++) {
+      var r = Math.floor(id / C), c = id % C, x = ox + c * CELL, y = oy + r * CELL;
+      if (r === 0 ? id !== g.start : !g.isOpen(id, id - C)) seg(x, y, x + CELL, y);
+      if (c === 0 || !g.isOpen(id, id - 1)) seg(x, y, x, y + CELL);
+      if (c === C - 1) seg(x + CELL, y, x + CELL, y + CELL);
+      if (r === R - 1 && id !== g.finish) seg(x, y + CELL, x + CELL, y + CELL);
+    }
+    var out = '<svg class="maze-svg" viewBox="0 0 ' + vw + ' ' + vh + '" ' +
+      'preserveAspectRatio="xMidYMid meet" role="img" aria-label="Maze">' +
+      '<path d="' + d + '" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="square"/>';
+
+    Object.keys(g.arrow).forEach(function (k) {
+      k = +k;
+      var lo = k >> 1, hi = (k & 1) ? lo + C : lo + 1;
+      var from = g.arrow[k], to = from === lo ? hi : lo;
+      var dx = (cx(to) - cx(from)) / CELL, dy = (cy(to) - cy(from)) / CELL;
+      var mx = (cx(from) + cx(to)) / 2, my = (cy(from) + cy(to)) / 2;
+      var bx = mx + 2 * dx, by = my + 2 * dy, px = -dy * 4.6, py = dx * 4.6;
+      out += '<path d="M' + r1(mx - 8 * dx) + ' ' + r1(my - 8 * dy) + 'L' + r1(bx) + ' ' + r1(by) +
+        '" stroke="' + MAZE_RED + '" stroke-width="2.6" stroke-linecap="round"/>' +
+        '<path d="M' + r1(mx + 9 * dx) + ' ' + r1(my + 9 * dy) + 'L' + r1(bx + px) + ' ' + r1(by + py) +
+        'L' + r1(bx - px) + ' ' + r1(by - py) + 'Z" fill="' + MAZE_RED + '"/>';
+    });
+
+    for (var i = 0; i < g.N; i++) {
+      if (g.partner[i] < 0) continue;
+      out += '<circle cx="' + cx(i) + '" cy="' + cy(i) + '" r="8" fill="#ffffff" stroke="' +
+        MAZE_GREEN + '" stroke-width="2"/>' +
+        '<text class="maze-num" x="' + cx(i) + '" y="' + r1(cy(i) + 0.5) +
+        '" text-anchor="middle" dominant-baseline="central">' + g.num[i] + '</text>';
+    }
+
+    function label(cell, text, ty) {
+      var c = cell % C, tx = cx(cell), anchor = 'middle';
+      if (c === 0) { tx = ox + 1; anchor = 'start'; }
+      else if (c === C - 1) { tx = ox + W - 1; anchor = 'end'; }
+      return '<text class="maze-end" x="' + tx + '" y="' + ty + '" text-anchor="' + anchor + '">' + text + '</text>';
+    }
+    out += label(g.start, 'START', oy - 5) + label(g.finish, 'FINISH', oy + H + 12);
+    return out + '</svg>';
+  }
+
   /* ── The activities ─────────────────────────────────── */
   var ACTIVITIES = {
     verse: function (body, rng, box) {
@@ -555,8 +879,12 @@ KIDS_JS = r"""
       'Number clues around a grid. Shade the right squares to find the picture.'),
     words: placeholder('Word search',
       'A letter grid with a word bank underneath.'),
-    maze: placeholder('Maze',
-      'Stars, one-way arrows and jump circles, with a picture key for the rules.'),
+    maze: function (body, rng) {
+      // As many quarter-inch squares as fit the box
+      var C = Math.max(8, Math.min(16, Math.floor((body.clientWidth - 4) / CELL)));
+      var R = Math.max(6, Math.min(12, Math.floor((body.clientHeight - 34) / CELL)));
+      body.innerHTML = drawMaze(makeMaze(R, C, rng));
+    },
     draw: placeholder('Draw it',
       'A drawing prompt and a big open box.')
   };
@@ -671,10 +999,27 @@ SHEET_WHEEL = (
     "</svg>"
 )
 
-def _act(name: str, title: str, note: str = "") -> str:
-    """One shuffleable box: a label chip, optional directions beside it,
-    and an empty body for its maker."""
-    note_html = f'<p class="act-note">{escape(note)}</p>' if note else ""
+# The maze's two rules, drawn in the same red and green as the maze.
+MAZE_RULES = (
+    '<div class="maze-rules">'
+    '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
+    '<circle cx="10" cy="10" r="8" fill="#ffffff" stroke="#15803d" stroke-width="2"/>'
+    '<text class="maze-num" x="10" y="10.5" text-anchor="middle" dominant-baseline="central">1</text>'
+    "</svg>Same number? Hop across!</span>"
+    '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
+    '<path d="M2.5 10H11" stroke="#e0241b" stroke-width="2.6" stroke-linecap="round"/>'
+    '<path d="M18 10L10.5 5.4V14.6Z" fill="#e0241b"/>'
+    "</svg>Arrows go one way only.</span>"
+    "</div>"
+)
+
+
+def _act(name: str, title: str, note: str = "", note_html: str = "") -> str:
+    """One shuffleable box: a label chip, optional directions beside it
+    (plain text as note, or ready-made markup as note_html), and an
+    empty body for its maker."""
+    if note:
+        note_html = f'<p class="act-note">{escape(note)}</p>'
     return (
         f'<section class="act act-{name}" data-act="{name}" role="button" tabindex="0" '
         f'aria-label="{escape(title)}. Tap to shuffle.">'
@@ -717,7 +1062,7 @@ def render_kids_sheet(verses: list[str], events) -> str:
         '<div class="sh-grid">\n'
         f'{_act("picture", "Hidden picture")}\n'
         f'{_act("words", "Word search")}\n'
-        f'{_act("maze", "Maze")}\n'
+        f'{_act("maze", "Maze", note_html=MAZE_RULES)}\n'
         f'{_act("draw", "Draw it")}\n'
         "</div>\n"
         '<footer class="sh-foot">'
