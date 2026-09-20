@@ -1,0 +1,29 @@
+# Drawing prompts for the kids activity sheet, one per line.
+# Each shuffle of the DRAW IT box picks one. About 90 characters is the
+# most that fits comfortably (three lines on the sheet).
+# Blank lines and lines starting with # are ignored.
+
+Draw what Noah saw when he opened the window of the ark.
+Draw the animals lining up for the ark, two by two. Who's cutting in line?
+Draw the fish that swallowed Jonah. What else is in its belly?
+Draw a lion that is NOT hungry, sitting next to Daniel.
+Draw David facing Goliath. Make Goliath really, really big.
+Draw the Red Sea splitting in two, with fish watching from the walls of water.
+Draw the burning bush that burned but never burned up.
+Draw the star the wise men followed, and what they found under it.
+Draw the empty tomb on Easter morning.
+Draw the boy's lunch that fed 5,000 people.
+Draw Zacchaeus up in his tree, trying to see Jesus.
+Draw Jesus calming the storm. What do the disciples' faces look like?
+Draw the walls of Jericho falling down.
+Draw Joseph's coat of many colors. Color every stripe differently.
+Draw the lost sheep, and the shepherd who found it.
+Draw someone helping a stranger, like the Good Samaritan.
+Draw the Garden of Eden with an animal hiding somewhere in it.
+Invent a brand-new animal God could have made. Give it a name.
+Draw something God made that you think is funny.
+Draw someone you want to thank today, and show why.
+Draw your favorite thing about Grace House.
+Draw a place where you feel close to God.
+Draw what you think a very happy angel looks like.
+Draw the rainbow God put in the sky, and what's under it.
