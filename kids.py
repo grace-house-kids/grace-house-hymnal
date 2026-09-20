@@ -43,6 +43,25 @@ Where things come from:
                  MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
+    Word search  a theme from words.txt (Noah's Ark, Jonah, ...), its name
+                 beside the label. Up to 10 of its words hidden across,
+                 down, or slanting (never backwards), with a word bank
+                 beside the grid. Filler letters are checked in every
+                 direction so they never spell a bad word by accident.
+                 If words.txt is missing, STARTER_WORDS below is used.
+
+words.txt format (same idea as verses.txt and events.txt):
+    Noah's Ark
+    Noah, ark, dove, rain, flood, rainbow, animals, raven
+    Olive branch, promise
+
+    Jonah
+    Jonah, fish, storm, ...
+The first line of a block is the theme's name; the rest are its words,
+split by commas or one per line. A word can have a space in it ("Red
+Sea"): the bank shows the space, the grid runs the letters together.
+Blank line between themes. Lines starting with # are ignored. Words
+need 3 to 10 letters, and a theme needs at least 6 words.
 
 server.py hands in the verses and events. This file never reads files
 and never imports server.py.
@@ -56,10 +75,81 @@ built.
 from __future__ import annotations
 
 import json
+import re
 from html import escape
 
 # Used only if verses.txt is missing or empty.
 FALLBACK_VERSES = ["John 3:16", "Psalm 23:1", "Philippians 4:13"]
+
+# Used only if words.txt is missing or has no usable themes. Same format
+# as words.txt, so this doubles as a starter file to copy.
+STARTER_WORDS = """
+Noah's Ark
+Noah, ark, dove, rain, flood, rainbow, animals, raven
+olive, promise, forty days, Shem, Ham
+
+Creation
+light, water, land, plants, sun, moon, stars, fish
+birds, animals, Adam, Eve, garden, rest
+
+David and Goliath
+David, Goliath, sling, stones, giant, shepherd, sheep
+Saul, armor, brave, brook, sword, shield
+
+Jonah
+Jonah, fish, Nineveh, storm, boat, sailors, sea
+pray, vine, worm, three days, mercy
+
+Baby Jesus
+Mary, Joseph, Jesus, manger, stable, angel, shepherds
+star, wise men, gold, inn, Bethlehem, gifts
+
+Easter
+Jesus, cross, tomb, stone, risen, alive, Mary
+garden, angel, Sunday, life, Peter, linen
+
+Moses
+Moses, Egypt, Pharaoh, plagues, Red Sea, basket, staff
+manna, desert, tablets, Aaron, Miriam, bush
+
+Daniel
+Daniel, lions, den, king, Darius, pray, window
+angel, safe, faith, Babylon, shut, mouths
+
+Five Loaves
+bread, fish, loaves, boy, baskets, crowd, twelve
+hill, grass, thanks, share, disciples, Jesus
+
+Fruit of the Spirit
+love, joy, peace, patience, kindness, goodness
+gentleness, faithful, spirit, fruit, Galatians
+"""
+
+
+def parse_word_themes(text: str) -> list[tuple[str, list[str]]]:
+    """[(theme name, [WORD, ...]), ...] from words.txt-style text.
+
+    Words come back upper-cased, spaces kept for the word bank. Words
+    with fewer than 3 or more than 10 letters are skipped (the grid is
+    only about 10 squares across), and so is any theme left with fewer
+    than 6 words.
+    """
+    lines = [ln for ln in (text or "").splitlines() if not ln.strip().startswith("#")]
+    themes = []
+    for block in re.split(r"\n\s*\n", "\n".join(lines)):
+        rows = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        if len(rows) < 2:
+            continue
+        name, words = rows[0], []
+        for row in rows[1:]:
+            for raw in row.split(","):
+                word = " ".join(raw.split()).upper()
+                letters = re.sub(r"[^A-Z]", "", word)
+                if 3 <= len(letters) <= 10 and word not in words:
+                    words.append(word)
+        if len(words) >= 6:
+            themes.append((name, words))
+    return themes
 
 
 # ─────────────────────────────────────────────────────────────
@@ -379,6 +469,65 @@ main { max-width: calc(8.5in + 50px); }
   fill: #0a0a0a;
 }
 
+/* Word search: label with the theme's name beside it, then the grid
+   with the word bank in a column to its right (a squarer grid than a
+   bank underneath would leave, so diagonals have room). */
+.act-words {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.14in;
+  row-gap: 0.1in;
+}
+.act-words .act-label { margin: 0; }
+.act-words .act-body { grid-column: 1 / -1; align-self: stretch; }
+.ws-theme {
+  margin: 0;
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 800;
+  font-size: 12pt;
+  line-height: 1.05;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.ws {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.16in;
+}
+.ws-svg { display: block; flex-shrink: 0; }
+.ws-l {
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 700;
+  font-size: 12.5px;
+  fill: #0a0a0a;
+}
+.ws-bank {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 700;
+  font-size: 10pt;
+  line-height: 1.1;
+  letter-spacing: 0.5px;
+}
+.ws-bank li { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.ws-bank li::before {          /* a little box to tick off */
+  content: "";
+  flex-shrink: 0;
+  width: 0.09in;
+  height: 0.09in;
+  border: 1.2px solid #0a0a0a;
+}
+
 /* PLACEHOLDER look, until each activity is built */
 .ph {
   position: absolute;
@@ -475,6 +624,7 @@ KIDS_JS = r"""
   }
   var VERSES = read('data-verses');
   var EVENTS = read('data-events');   // [["2026-09-27", ["Fall potluck", ...]], ...] soonest first
+  var THEMES = read('data-words');    // [["Noah's Ark", ["NOAH", "ARK", ...]], ...]
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -1043,6 +1193,196 @@ KIDS_JS = r"""
     return out + '</svg>';
   }
 
+  /* ── Word search ─────────────────────────────────────────
+     How one gets made:
+       1. Pick a theme (not the same as last time) and up to 10 of its
+          words, skipping any word hidden inside another (SEA in SEAS).
+       2. Put the word bank in, measure it, and fit as many quarter-inch
+          squares as the space beside it allows.
+       3. Hide the words, longest first: across, down, or slanting (down
+          or up), always read left to right. Words may cross where they
+          share a letter.
+       4. Fill the rest, mostly with letters from the theme's own words,
+          so the real ones don't stand out.
+       5. Check it: every word is in there exactly once, at least one
+          runs on a slant, and no bad word shows up in any direction.
+          If not, refill (or start over). */
+  var WS_CELL = 0.245 * 96;           // one square, in screen pixels (about a quarter inch)
+  var WS_U = 20, WS_PAD = 5;          // drawing units per square, and a margin inside the border
+  // [down, across] per letter, and how often each direction gets picked:
+  // across, down, slanting down, slanting up
+  var WS_DIRS = [[0, 1, 3], [1, 0, 3], [1, 1, 2], [-1, 1, 2]];
+  // Words the filler must never spell, in any direction. Scrambled
+  // (ROT13) so they don't sit in the page as plain text.
+  var NEVER = ('shpx fuvg cvff phag qvpx pbpx gjng fyhg juber ovgpu gvgf cbea frk snt ' +
+    'anmv avttre avttn fcvp xvxr puvax encr ohgg nff qnza penc qbat chff wvmm phz ubzb')
+    .split(' ').map(function (w) {
+      return w.toUpperCase().replace(/[A-Z]/g, function (ch) {
+        return String.fromCharCode((ch.charCodeAt(0) - 52) % 26 + 65);
+      });
+    });
+
+  function wsLetters(w) { return w.replace(/[^A-Z]/g, ''); }
+  function rev(s) { return s.split('').reverse().join(''); }
+
+  function pickWords(list, rng, max) {
+    var out = [];
+    shuffled(list, rng).forEach(function (w) {
+      var g = wsLetters(w);
+      if (out.length >= max || g.length < 3 || g.length > 10) return;
+      var clash = out.some(function (o) {
+        var h = wsLetters(o);
+        return h.indexOf(g) !== -1 || g.indexOf(h) !== -1;
+      });
+      if (!clash) out.push(w);
+    });
+    return out;
+  }
+
+  // Every row, column and slant, read forwards
+  function wsLines(grid, R, C) {
+    var lines = [];
+    WS_DIRS.forEach(function (d) {
+      for (var r = 0; r < R; r++) {
+        for (var c = 0; c < C; c++) {
+          var pr = r - d[0], pc = c - d[1];
+          if (pr >= 0 && pr < R && pc >= 0 && pc < C) continue;   // not the start of a line
+          var s = '';
+          for (var rr = r, cc = c; rr >= 0 && rr < R && cc >= 0 && cc < C; rr += d[0], cc += d[1]) {
+            s += grid[rr * C + cc];
+          }
+          lines.push(s);
+        }
+      }
+    });
+    return lines;
+  }
+  function countIn(lines, w) {
+    var n = 0;
+    lines.forEach(function (s) {
+      for (var i = s.indexOf(w); i !== -1; i = s.indexOf(w, i + 1)) n++;
+    });
+    return n;
+  }
+
+  function wsPlace(words, R, C, rng) {
+    var grid = new Array(R * C).fill(''), placed = [];
+    words.slice().sort(function (a, b) { return wsLetters(b).length - wsLetters(a).length; })
+      .forEach(function (w) {
+        var g = wsLetters(w), L = g.length, opts = [];
+        WS_DIRS.forEach(function (d, di) {
+          for (var r = 0; r < R; r++) {
+            for (var c = 0; c < C; c++) {
+              var er = r + d[0] * (L - 1), ec = c + d[1] * (L - 1);
+              if (er < 0 || er >= R || ec < 0 || ec >= C) continue;
+              var ok = true, over = 0;
+              for (var k = 0; k < L; k++) {
+                var ch = grid[(r + d[0] * k) * C + c + d[1] * k];
+                if (ch === '') continue;
+                if (ch !== g.charAt(k)) { ok = false; break; }
+                over++;
+              }
+              if (ok && over < L) opts.push([di, r, c, over]);
+            }
+          }
+        });
+        if (!opts.length) return;                    // no room: this word sits out
+        var crossing = opts.filter(function (o) { return o[3] > 0; });
+        var pool = crossing.length && rng() < 0.35 ? crossing : opts;
+        // A direction by weight (of the ones that fit), then a spot in it
+        var dirs = [];
+        pool.forEach(function (o) { if (dirs.indexOf(o[0]) === -1) dirs.push(o[0]); });
+        var total = 0;
+        dirs.forEach(function (x) { total += WS_DIRS[x][2]; });
+        var roll = rng() * total, di = dirs[0];
+        for (var i = 0; i < dirs.length; i++) {
+          roll -= WS_DIRS[dirs[i]][2];
+          if (roll < 0) { di = dirs[i]; break; }
+        }
+        var spots = pool.filter(function (o) { return o[0] === di; });
+        var s = spots[randInt(rng, spots.length)];
+        for (var k2 = 0; k2 < L; k2++) {
+          grid[(s[1] + WS_DIRS[di][0] * k2) * C + s[2] + WS_DIRS[di][1] * k2] = g.charAt(k2);
+        }
+        placed.push({ word: w, dir: di });
+      });
+    return { grid: grid, placed: placed };
+  }
+
+  function wsFill(grid, placed, rng) {
+    var pool = placed.map(function (p) { return wsLetters(p.word); }).join('');
+    return grid.map(function (ch) {
+      if (ch) return ch;
+      return rng() < 0.7 ? pool.charAt(randInt(rng, pool.length)) : LETTERS.charAt(randInt(rng, 26));
+    });
+  }
+
+  function wsOk(full, R, C, placed) {
+    var lines = wsLines(full, R, C), both = lines.concat(lines.map(rev));
+    var hidden = placed.map(function (p) { return wsLetters(p.word); });
+    if (hidden.some(function (g) { return countIn(lines, g) !== 1; })) return false;
+    return !NEVER.some(function (bad) {
+      // A real word with one inside it (GRASS) gets a pass
+      if (hidden.some(function (g) { return g.indexOf(bad) !== -1 || rev(g).indexOf(bad) !== -1; })) return false;
+      return both.some(function (s) { return s.indexOf(bad) !== -1; });
+    });
+  }
+
+  function wordSearch(body, words, rng) {
+    function bank(list) {
+      return '<ul class="ws-bank">' + list.slice().sort().map(function (w) {
+        return '<li>' + esc(w) + '</li>';
+      }).join('') + '</ul>';
+    }
+    // The bank goes in first and gets measured; the grid gets the rest
+    body.innerHTML = '<div class="ws">' + bank(words) + '</div>';
+    var W = body.clientWidth - body.querySelector('.ws-bank').offsetWidth - 0.16 * 96;
+    var H = body.clientHeight;
+    var C = Math.max(6, Math.min(14, Math.floor((W - 12) / WS_CELL)));
+    var R = Math.max(6, Math.min(14, Math.floor((H - 12) / WS_CELL)));
+
+    // Only as many letters as leave room for filler around them
+    var maxLen = Math.max(R, C), cap = Math.floor(R * C * 0.6), used = 0;
+    var fits = words.filter(function (w) {
+      var l = wsLetters(w).length;
+      if (l > maxLen || used + l > cap) return false;
+      used += l;
+      return true;
+    });
+
+    var best = null;
+    for (var t = 0; t < 60 && !best; t++) {
+      var strict = t < 40;                        // after 40 tries, settle for less
+      var pl = wsPlace(fits, R, C, rng);
+      if (strict && pl.placed.length < Math.min(6, fits.length)) continue;
+      var slants = pl.placed.filter(function (p) { return p.dir >= 2; }).length;
+      if (strict && pl.placed.length >= 5 && !slants) continue;
+      for (var f = 0; f < 25 && !best; f++) {
+        var full = wsFill(pl.grid, pl.placed, rng);
+        if (wsOk(full, R, C, pl.placed)) best = { grid: full, placed: pl.placed };
+      }
+    }
+    if (!best) {
+      body.innerHTML = '<div class="ph"><b>Word search</b><span>Tap to try again.</span></div>';
+      return;
+    }
+
+    var vw = C * WS_U + 2 * WS_PAD, vh = R * WS_U + 2 * WS_PAD;
+    var scale = Math.min(W / vw, H / vh);
+    var svg = '<svg class="ws-svg" width="' + r1(vw * scale) + '" height="' + r1(vh * scale) + '" ' +
+      'viewBox="0 0 ' + vw + ' ' + vh + '" role="img" aria-label="Word search grid">' +
+      '<rect x="0.6" y="0.6" width="' + (vw - 1.2) + '" height="' + (vh - 1.2) + '" ' +
+      'fill="none" stroke="#0a0a0a" stroke-width="1.2"/><g class="ws-l" text-anchor="middle">';
+    for (var i = 0; i < R * C; i++) {
+      // + 4.5 drops each capital to sit centered in its square
+      svg += '<text x="' + (WS_PAD + (i % C + 0.5) * WS_U) + '" ' +
+        'y="' + (WS_PAD + (Math.floor(i / C) + 0.5) * WS_U + 4.5) + '">' + best.grid[i] + '</text>';
+    }
+    svg += '</g></svg>';
+    body.innerHTML = '<div class="ws">' + svg +
+      bank(best.placed.map(function (p) { return p.word; })) + '</div>';
+  }
+
   /* ── The activities ─────────────────────────────────── */
   var ACTIVITIES = {
     verse: function (body, rng, box) {
@@ -1056,8 +1396,17 @@ KIDS_JS = r"""
       var answer = document.getElementById('kids-answer');
       if (answer) answer.textContent = ref;
     },
-    words: placeholder('Word search',
-      'A letter grid with a word bank underneath.'),
+    words: function (body, rng, box) {
+      var themes = THEMES.length ? THEMES :
+        [['Creation', ['LIGHT', 'WATER', 'LAND', 'PLANTS', 'STARS', 'FISH', 'BIRDS', 'ADAM', 'EVE']]];
+      var last = box.getAttribute('data-theme');
+      var th = pick(themes, rng);
+      for (var tries = 0; th[0] === last && tries < 20; tries++) th = pick(themes, rng);
+      box.setAttribute('data-theme', th[0]);
+      var name = box.querySelector('.ws-theme');
+      if (name) name.textContent = th[0];
+      wordSearch(body, pickWords(th[1], rng, 10), rng);
+    },
     maze: function (body, rng) {
       // As many quarter-inch squares as fit the box
       var C = Math.max(8, Math.min(18, Math.floor((body.clientWidth - 4) / CELL)));
@@ -1090,6 +1439,18 @@ KIDS_JS = r"""
       });
       shuffle(box, false);
     })(boxes[i]);
+  }
+
+  // The word bank's width depends on the font, and the page's fonts may
+  // still be loading on the first draw. Once they're in, lay the same
+  // word search out again (same seed, so same theme and words).
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      var wb = sheet.querySelector('.act-words');
+      if (!wb || !wb.getAttribute('data-seed')) return;
+      wb.removeAttribute('data-theme');
+      ACTIVITIES.words(wb.querySelector('.act-body'), makeRng(+wb.getAttribute('data-seed')), wb);
+    });
   }
 
   /* ── Next up: the first event that's today or later ──── */
@@ -1194,6 +1555,11 @@ MAZE_RULES = (
 )
 
 
+# Where the word search's theme name goes, beside its label. Filled in
+# by KIDS_JS on every shuffle.
+WS_THEME_SLOT = '<p class="ws-theme"></p>'
+
+
 def _act(name: str, title: str, note: str = "", note_html: str = "") -> str:
     """One shuffleable box: a label chip, optional directions beside it
     (plain text as note, or ready-made markup as note_html), and an
@@ -1210,13 +1576,16 @@ def _act(name: str, title: str, note: str = "", note_html: str = "") -> str:
     )
 
 
-def render_kids_sheet(verses: list[str], events) -> str:
+def render_kids_sheet(verses: list[str], events, words_text: str = "") -> str:
     """The toolbar, the printable sheet, and its own CSS and JS.
 
     verses: ["John 3:16", ...]              from server.load_verses()
     events: [(date, [detail lines]), ...]   from server.parse_events()[0]
+    words_text: the contents of words.txt ("" if there isn't one)
     """
     verse_data = escape(json.dumps(verses or FALLBACK_VERSES, ensure_ascii=False))
+    themes = parse_word_themes(words_text) or parse_word_themes(STARTER_WORDS)
+    word_data = escape(json.dumps(themes, ensure_ascii=False))
     event_data = escape(json.dumps(
         [[when.isoformat(), list(lines)] for when, lines in events],
         ensure_ascii=False,
@@ -1229,7 +1598,8 @@ def render_kids_sheet(verses: list[str], events) -> str:
         'This sheet\'s verse: <b id="kids-answer"></b></span>'
         "</div>\n"
         '<div id="sheet-wrap" class="sheet-wrap">\n'
-        f'<div id="sheet" class="sheet" data-verses="{verse_data}" data-events="{event_data}">\n'
+        f'<div id="sheet" class="sheet" data-verses="{verse_data}" data-events="{event_data}" '
+        f'data-words="{word_data}">\n'
         '<header class="sh-head">'
         '<div class="sh-brand">'
         '<span class="sh-sr">Grace House Kids</span>'
@@ -1240,7 +1610,7 @@ def render_kids_sheet(verses: list[str], events) -> str:
         "</header>\n"
         f'{_act("verse", "Look it up", "Crack the code, then find the verse in a Bible.")}\n'
         '<div class="sh-grid">\n'
-        f'{_act("words", "Word search")}\n'
+        f'{_act("words", "Word search", note_html=WS_THEME_SLOT)}\n'
         f'{_act("maze", "Maze", note_html=MAZE_RULES)}\n'
         f'{_act("draw", "Draw it")}\n'
         "</div>\n"
