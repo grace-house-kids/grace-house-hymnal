@@ -202,6 +202,10 @@ def build() -> None:
     if server.section_ready("who-we-are"):
         page_out(f"{key}/who-we-are/index.html", server.render_who_page(key), key, 1)
 
+    # Poetry — /{key}/poetry/index.html, from poems.txt.
+    if server.section_ready("poetry"):
+        page_out(f"{key}/poetry/index.html", server.render_poetry_page(key), key, 1)
+
     # "Coming soon" for every front-page section without a real page yet.
     print("Sections:")
     for slug, title, _sub in server.SECTIONS:
