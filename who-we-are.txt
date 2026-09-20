@@ -25,6 +25,7 @@ When we gather, we sing and we pray together. This is our worship, and it's all 
 
 Message
 [Time: 6:45 p.m.]
+[Who: Open]
 After the meal we gather in a circle to share a message. Nick and Eli each come with something prepared so there's always a place to start. It isn't a sermon, and they are not standing over anyone; just making sure the conversation has a beginning. Whatever God has laid on your heart, bring it too. We'll weigh it together, the way the church has always done.
 
 John3:Sixteens
@@ -32,10 +33,5 @@ John3:Sixteens
 [Who: Megan]
 Welcome to John 3:Sixteens Youth Squad, a family of young believers rooted in God's love and called to live with purpose. We grow together in faith and friendship, and we shine His light where we are. Loved, chosen, and sent.
 
-# ── About the wheel: not on the page yet ──
-# To show it, write your board game half, then take the "# " off the
-# three lines starting at "About the wheel".
-#
-# About the wheel
-# The wheel in our name is older than it looks. Early Christians wrote ΙΧΘΥΣ, the Greek word for fish, as a tiny creed: Jesus Christ, God's Son, Savior. Lay its five letters on top of each other and they make an eight-spoked wheel. Believers scratched it into stone at Ephesus, and you can still see it there today.
-# (Your board game story goes here.)
+About the wheel
+The wheel in our name is older than it looks. Early Christians wrote ΙΧΘΥΣ, the Greek word for fish, as a tiny creed: Jesus Christ, God's Son, Savior. Lay its five letters on top of each other and they make an eight-spoked wheel. Believers scratched it into stone at Ephesus, and you can still see it there today.
