@@ -1,0 +1,45 @@
+# Letters — one letter per block, three dashes between blocks.
+#
+#   line 1          how it shows in the list
+#   line 2          the heading on the letter's own page
+#   [Date: ...]     optional, written however you like
+#   everything      after that is the letter
+#
+# Blank line = new paragraph. "- " makes a bullet, "> " an indented
+# quote. Lines you don't separate keep their breaks, so a signature
+# looks the way you typed it. Lines starting with # are notes to
+# yourself and never show up on the site.
+#
+# Newest at the top — the list reads in the order you type them.
+
+A Letter to Grubthorn
+A Letter to Grubthorn
+[Date: September 2026]
+
+Dear Grubthorn,
+
+Today has been troubling.
+
+Sincerely,
+Wurmtongue
+
+---
+
+On Being Small
+A Sermon on Being Small
+[Date: August 2026]
+
+We keep score in the wrong currency. We count square footage and
+followers, and then wonder why the arithmetic never comes out to peace.
+
+> He must increase, but I must decrease.
+> John 3:30
+
+Three things worth trying this week:
+
+- Do one good thing nobody finds out about.
+- Let somebody else be right.
+- Sit with the person nobody is sitting with.
+
+Grace and peace,
+Pastor
