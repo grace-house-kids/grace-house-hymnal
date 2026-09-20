@@ -305,6 +305,8 @@ SECTIONS = [
     ("hymnal",     "Hymnal",          "Songs we sing together"),
     ("events",     "Events",          "What's coming up"),
     ("who-we-are", "Who We Are",      "What we believe"),
+    ("letters",    "Letters",         "Past messages"),    
+    ("poetry",      "Poetry",         "Ramblings pointed at grace"),
     ("tracts",     "Tracts",          "Free to download"),
     ("kids",       "Kids Activities", "Word searches, mazes & coloring"),
 ]
