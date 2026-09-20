@@ -17,7 +17,8 @@ gives a fresh sheet every time, with nothing to rebuild.
     │ MAZE               │ WORD SEARCH         │
     │ (runs the whole    │                     │
     │  left side)        ├─────────────────────┤
-    │                    │ DRAW IT             │
+    │                    │ DRAW IT (prompt,    │
+    │                    │  then open space)   │
     ├────────────────────┴─────────────────────┤
     │ NEXT UP  (next event from events.txt)    │
     └──────────────────────────────────────────┘
@@ -49,6 +50,9 @@ Where things come from:
                  beside the grid. Filler letters are checked in every
                  direction so they never spell a bad word by accident.
                  If words.txt is missing, STARTER_WORDS below is used.
+    Draw it      a prompt from prompts.txt (one per line, # = comment),
+                 then the rest of the box left open for drawing. If
+                 prompts.txt is missing, STARTER_PROMPTS below is used.
 
 words.txt format (same idea as verses.txt and events.txt):
     Noah's Ark
@@ -69,8 +73,7 @@ and never imports server.py.
 How shuffling works: every box with a data-act name has a maker in
 ACTIVITIES inside KIDS_JS. maker(body, rng, box) fills the box's body.
 rng() gives a random number from 0 to 1 and is seeded, so the same seed
-always makes the same puzzle. Makers marked PLACEHOLDER are still to be
-built.
+always makes the same puzzle.
 """
 from __future__ import annotations
 
@@ -150,6 +153,45 @@ def parse_word_themes(text: str) -> list[tuple[str, list[str]]]:
         if len(words) >= 6:
             themes.append((name, words))
     return themes
+
+
+# Used only if prompts.txt is missing or empty. One prompt per line,
+# same as prompts.txt, so this doubles as a starter file to copy.
+STARTER_PROMPTS = """
+Draw what Noah saw when he opened the window of the ark.
+Draw the animals lining up for the ark, two by two. Who's cutting in line?
+Draw the fish that swallowed Jonah. What else is in its belly?
+Draw a lion that is NOT hungry, sitting next to Daniel.
+Draw David facing Goliath. Make Goliath really, really big.
+Draw the Red Sea splitting in two, with fish watching from the walls of water.
+Draw the burning bush that burned but never burned up.
+Draw the star the wise men followed, and what they found under it.
+Draw the empty tomb on Easter morning.
+Draw the boy's lunch that fed 5,000 people.
+Draw Zacchaeus up in his tree, trying to see Jesus.
+Draw Jesus calming the storm. What do the disciples' faces look like?
+Draw the walls of Jericho falling down.
+Draw Joseph's coat of many colors. Color every stripe differently.
+Draw the lost sheep, and the shepherd who found it.
+Draw someone helping a stranger, like the Good Samaritan.
+Draw the Garden of Eden with an animal hiding somewhere in it.
+Invent a brand-new animal God could have made. Give it a name.
+Draw something God made that you think is funny.
+Draw someone you want to thank today, and show why.
+Draw your favorite thing about Grace House.
+Draw a place where you feel close to God.
+Draw what you think a very happy angel looks like.
+Draw the rainbow God put in the sky, and what's under it.
+"""
+
+
+def parse_prompts(text: str) -> list[str]:
+    """Drawing prompts from prompts.txt-style text: one per line,
+    blank lines and lines starting with # skipped."""
+    return [
+        " ".join(ln.split()) for ln in (text or "").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
 
 
 # ─────────────────────────────────────────────────────────────
@@ -528,7 +570,22 @@ main { max-width: calc(8.5in + 50px); }
   border: 1.2px solid #0a0a0a;
 }
 
-/* PLACEHOLDER look, until each activity is built */
+/* Draw it: the prompt, then open space with a light frame to draw in */
+.draw {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1in;
+}
+.draw-prompt {
+  margin: 0;
+  font-size: 11.5pt;
+  line-height: 1.3;
+}
+.draw-space { flex: 1; min-height: 0; border: 1px solid #b8b8b8; }
+
+/* The "try again" note, if a puzzle ever can't be made */
 .ph {
   position: absolute;
   inset: 0;
@@ -625,6 +682,7 @@ KIDS_JS = r"""
   var VERSES = read('data-verses');
   var EVENTS = read('data-events');   // [["2026-09-27", ["Fall potluck", ...]], ...] soonest first
   var THEMES = read('data-words');    // [["Noah's Ark", ["NOAH", "ARK", ...]], ...]
+  var PROMPTS = read('data-prompts');  // ["Draw what Noah saw ...", ...]
 
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
@@ -645,18 +703,6 @@ KIDS_JS = r"""
   }
   function newSeed() { return Math.floor(Math.random() * 4294967296); }
   function pick(list, rng) { return list[Math.floor(rng() * list.length)]; }
-
-  /* PLACEHOLDER maker: shows what goes in the box, and counts shuffles
-     so you can see tapping works. */
-  function placeholder(name, what) {
-    return function (body, rng, box) {
-      var n = (+box.getAttribute('data-n') || 0) + 1;
-      box.setAttribute('data-n', n);
-      body.innerHTML =
-        '<div class="ph"><b>' + name + '</b><span>' + what + '</span>' +
-        '<small>Shuffle #' + n + '</small></div>';
-    };
-  }
 
   /* ── Look it up: the secret code ────────────────────────
      Every letter and number in the reference gets its own symbol,
@@ -1413,8 +1459,15 @@ KIDS_JS = r"""
       var R = Math.max(6, Math.min(30, Math.floor((body.clientHeight - 34) / CELL)));
       body.innerHTML = drawMaze(makeMaze(R, C, rng));
     },
-    draw: placeholder('Draw it',
-      'A drawing prompt and a big open box.')
+    draw: function (body, rng, box) {
+      var list = PROMPTS.length ? PROMPTS : ['Draw your favorite story from the Bible.'];
+      var last = box.getAttribute('data-prompt');
+      var prompt = pick(list, rng);
+      for (var tries = 0; prompt === last && tries < 20; tries++) prompt = pick(list, rng);
+      box.setAttribute('data-prompt', prompt);
+      body.innerHTML = '<div class="draw"><p class="draw-prompt">' + esc(prompt) + '</p>' +
+        '<div class="draw-space"></div></div>';
+    }
   };
 
   function shuffle(box, flash) {
@@ -1576,16 +1629,20 @@ def _act(name: str, title: str, note: str = "", note_html: str = "") -> str:
     )
 
 
-def render_kids_sheet(verses: list[str], events, words_text: str = "") -> str:
+def render_kids_sheet(verses: list[str], events, words_text: str = "",
+                      prompts_text: str = "") -> str:
     """The toolbar, the printable sheet, and its own CSS and JS.
 
     verses: ["John 3:16", ...]              from server.load_verses()
     events: [(date, [detail lines]), ...]   from server.parse_events()[0]
     words_text: the contents of words.txt ("" if there isn't one)
+    prompts_text: the contents of prompts.txt ("" if there isn't one)
     """
     verse_data = escape(json.dumps(verses or FALLBACK_VERSES, ensure_ascii=False))
     themes = parse_word_themes(words_text) or parse_word_themes(STARTER_WORDS)
     word_data = escape(json.dumps(themes, ensure_ascii=False))
+    prompts = parse_prompts(prompts_text) or parse_prompts(STARTER_PROMPTS)
+    prompt_data = escape(json.dumps(prompts, ensure_ascii=False))
     event_data = escape(json.dumps(
         [[when.isoformat(), list(lines)] for when, lines in events],
         ensure_ascii=False,
@@ -1599,7 +1656,7 @@ def render_kids_sheet(verses: list[str], events, words_text: str = "") -> str:
         "</div>\n"
         '<div id="sheet-wrap" class="sheet-wrap">\n'
         f'<div id="sheet" class="sheet" data-verses="{verse_data}" data-events="{event_data}" '
-        f'data-words="{word_data}">\n'
+        f'data-words="{word_data}" data-prompts="{prompt_data}">\n'
         '<header class="sh-head">'
         '<div class="sh-brand">'
         '<span class="sh-sr">Grace House Kids</span>'
