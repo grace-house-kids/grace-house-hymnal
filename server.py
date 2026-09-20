@@ -133,6 +133,8 @@ from poetry import POETRY_CSS, parse_poems, render_poetry
 from prayer import PRAYER_CSS, parse_prayers, render_prayers
 from letters import (LETTERS_CSS, parse_letters, find_letter,
                      render_letters_index, render_letter)
+from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
+                      render_recipe)
 from html import escape
 from pathlib import Path
 
@@ -333,6 +335,8 @@ def section_ready(slug: str) -> bool:
         return parse_letters() is not None
     if slug == "prayer-list":
         return parse_prayers(parse_event_date) is not None
+    if slug == "cookbook":
+        return parse_recipes() is not None
     if slug == "events":
         return EVENTS_PATH.exists()
     return slug in READY_SECTIONS
@@ -1453,6 +1457,7 @@ CSS += WHO_CSS
 CSS += POETRY_CSS
 CSS += PRAYER_CSS
 CSS += LETTERS_CSS
+CSS += COOKBOOK_CSS
 
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
@@ -2283,6 +2288,36 @@ def render_prayer_page(key: str) -> str:
     )
     return page("Prayer List — Grace House", body, key)
 
+def render_cookbook_page(key: str) -> str:
+    """The cookbook index, built in cookbook.py from cookbook.txt."""
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="." class="back-tag">← HOME</a>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        '<div class="title-tag"><h1>COOKBOOK</h1></div>\n'
+        f"{render_cookbook(parse_recipes())}"
+    )
+    return page("Community Cookbook — Grace House", body, key)
+
+
+def render_recipe_page(number: int, key: str) -> str | None:
+    """One recipe's page. None when there's no recipe with that number."""
+    recipes = parse_recipes() or []
+    idx = number - 1
+    if idx < 0 or idx >= len(recipes):
+        return None
+    prev = recipes[idx - 1] if idx > 0 else None
+    nxt = recipes[idx + 1] if idx < len(recipes) - 1 else None
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="cookbook/" class="back-tag">← COOKBOOK</a>'
+        f'<span class="song-num">#{number}</span>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f"{render_recipe(recipes[idx], prev, nxt)}"
+    )
+    return page(f"{recipes[idx]['title']} — Grace House Cookbook", body, key)
 
 def render_blank() -> str:
     return (
@@ -2374,6 +2409,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "text/html; charset=utf-8",
             )
             return
+        if inner == "/cookbook" and section_ready("cookbook"):
+            self._send(render_cookbook_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
+            return
         if inner == "/zine":
             zine = parse_zine()
             if zine is None:
@@ -2438,6 +2477,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                                  musician=musician, meta=meta).encode("utf-8"),
                 "text/html; charset=utf-8",
             )
+            return
+        rm = re.match(r"^/cookbook/(\d+)$", inner)
+        if rm and section_ready("cookbook"):
+            html = render_recipe_page(int(rm.group(1)), key)
+            if html is None:
+                self._blank()
+                return
+            self._send(html.encode("utf-8"), "text/html; charset=utf-8")
             return
         # Front-page sections that don't have a real page yet.
         slug = inner.lstrip("/")
