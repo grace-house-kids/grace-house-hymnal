@@ -1,0 +1,24 @@
+# Prayer list. Only you edit this file.
+#
+# After a gathering, add a block: the date on its own line, then one
+# request per line. Put who asked in ( ) at the end so you know who to
+# go to for updates. Leave it off if they'd rather not be named.
+# New gatherings can go anywhere in the file; the page sorts by date.
+#
+#   September 27 2026
+#   Healing for Sarah after surgery (Mike)
+#   Dave's dad in the hospital (Dave)
+#   Peace at home
+#
+# The year is optional ("Sep 27" works). Each gathering's requests drop
+# off the page one month after its date. When a prayer is answered, put
+# a + at the start of its line and it moves to Answered until its month
+# is up.
+#
+# This file is public on GitHub, and old versions stay in its history,
+# so keep requests short and first names only.
+
+September 27 2026
+Healing for Sarah after surgery (Mike)
+Dave's dad in the hospital (Dave)
+Peace at home
