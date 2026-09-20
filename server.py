@@ -131,6 +131,8 @@ from kids import render_kids_sheet
 from who import WHO_CSS, parse_who, render_who
 from poetry import POETRY_CSS, parse_poems, render_poetry
 from prayer import PRAYER_CSS, parse_prayers, render_prayers
+from letters import (LETTERS_CSS, parse_letters, find_letter,
+                     render_letters_index, render_letter)
 from html import escape
 from pathlib import Path
 
@@ -327,6 +329,8 @@ def section_ready(slug: str) -> bool:
         return parse_who() is not None
     if slug == "poetry":
         return parse_poems() is not None
+    if slug == "letters":
+        return parse_letters() is not None
     if slug == "prayer-list":
         return parse_prayers(parse_event_date) is not None
     if slug == "events":
@@ -1448,6 +1452,7 @@ html.dark .player { -webkit-text-stroke-color: #000000; }
 CSS += WHO_CSS
 CSS += POETRY_CSS
 CSS += PRAYER_CSS
+CSS += LETTERS_CSS
 
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
@@ -2233,6 +2238,39 @@ def render_poetry_page(key: str) -> str:
     return page("Poetry — Grace House", body, key)
 
 
+def render_letters_page(key: str) -> str:
+    """The list of letters, built in letters.py from letters.txt."""
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="." class="back-tag">← HOME</a>'
+        '<span class="foot-link letters-chip">Letters</span>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f'<div class="title-tag"><h1>{escape(section_title("letters").upper())}</h1></div>\n'
+        f"{render_letters_index(parse_letters() or [])}"
+    )
+    return page("Letters — Grace House", body, key)
+
+
+def render_letter_page(key: str, slug: str) -> str | None:
+    """One letter. None if that slug isn't in letters.txt."""
+    letters = parse_letters() or []
+    idx = find_letter(letters, slug)
+    if idx is None:
+        return None
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="letters/" class="back-tag">← LETTERS</a>'
+        '<span class="song-num">✦</span>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f"{render_letter(letters, idx)}"
+    )
+    return page(f"{letters[idx][2]} — Grace House", body, key)
+
+
+
+
 def render_prayer_page(key: str) -> str:
     """Prayer list, built in prayer.py from prayer.txt."""
     body = (
@@ -2347,6 +2385,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 render_zine_page(title, sections, key).encode("utf-8"),
                 "text/html; charset=utf-8",
             )
+            return
+        if inner == "/letters" and section_ready("letters"):
+            self._send(render_letters_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
+            return
+        m = re.match(r"^/letters/([A-Za-z0-9-]+)$", inner)
+        if m:
+            html = render_letter_page(key, m.group(1))
+            if html is None:
+                self._blank()
+                return
+            self._send(html.encode("utf-8"), "text/html; charset=utf-8")
             return
         if inner == "/kids":
             self._send(render_kids_page(key).encode("utf-8"), "text/html; charset=utf-8")
