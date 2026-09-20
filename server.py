@@ -316,8 +316,8 @@ SECTIONS = [
     ("letters",    "Letters",         "Past messages"),    
     ("cookbook",   "Community Cookbook",  "Got a recipe?"),    
     ("poetry",      "Poetry",         "Ramblings pointed at grace"),
-    ("tracts",     "Tracts",          "Free to download"),
-    ("resources",    "Resources",         "Gospel prints and more"),    
+#   ("tracts",     "Tracts",          "Free to download"),
+    ("resources",    "Resources",         "Gospel prints, tracts, and more"),    
     ("kids",       "Kids Activities", "Mazes, secret codes & word searches"),
 ]
 READY_SECTIONS = {"zine", "hymnal", "kids", "events"}
