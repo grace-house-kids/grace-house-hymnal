@@ -551,7 +551,7 @@ main { max-width: calc(8.5in + 50px); }
   justify-content: center;
   gap: 0.16in;
 }
-.ws-svg { display: block; flex-shrink: 0; }
+.ws-svg { display: block; flex-shrink: 0; max-height: 100%; height: auto; }
 .ws-l {
   font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
   font-weight: 700;
@@ -656,11 +656,18 @@ main { max-width: calc(8.5in + 50px); }
   .act.shuffled { animation: none; }
 }
 
-/* ── Printing: only the sheet, full size, one page ───────────
-   Don't lock html/body to a height or hide their overflow here:
-   Safari then prints from wherever the page was scrolled to, and the
-   top of the sheet gets cut off. Instead the sheet is a hair shorter
-   than the paper, so rounding can never spill a blank second page. */
+/* ── Printing: only the sheet, one page ──────────────────────
+   Chrome, Edge, Firefox: they honor @page margin: 0, so the sheet is
+   the whole paper with its own half-inch border inside. It's a hair
+   shorter than the paper, so rounding never spills a blank second page.
+
+   Safari (and every iPhone/iPad browser, which all run on Safari's
+   engine): it ignores @page margins and adds its own, about 10 mm and a
+   bit more at the bottom. A full 8.5 x 11 sheet doesn't fit inside
+   those, so Safari shrinks it and shoves it up off the top of the
+   paper. KIDS_JS marks those browsers with html.webkit-print, and they
+   get only the part inside the border, 7.5 x 9.75 inches, centered;
+   Safari's own margins make the white edge. */
 @media print {
   html, body { margin: 0 !important; padding: 0 !important; }
   main { max-width: none !important; margin: 0 !important; padding: 0 !important; }
@@ -673,6 +680,8 @@ main { max-width: calc(8.5in + 50px); }
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  html.webkit-print .sheet { width: 7.5in; height: 9.75in; margin: 0 auto; }
+  html.webkit-print .sheet-in { top: 0; right: 0; bottom: 0; left: 0; }
 }
 """
 
@@ -685,6 +694,13 @@ KIDS_JS = r"""
   var sheet = document.getElementById('sheet');
   if (!sheet) return;
   var wrap = document.getElementById('sheet-wrap');
+
+  // Safari, and every iPhone/iPad browser (all built on Safari's engine),
+  // print with their own margins no matter what the page asks for, so
+  // they get a smaller printed sheet. See "Printing" in KIDS_CSS.
+  if ((navigator.vendor || '').indexOf('Apple') === 0) {
+    document.documentElement.classList.add('webkit-print');
+  }
 
   function read(attr) {
     try { return JSON.parse(sheet.getAttribute(attr)) || []; } catch (e) { return []; }
