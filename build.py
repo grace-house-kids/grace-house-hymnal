@@ -49,6 +49,7 @@ from pathlib import Path
 # Reuse everything from server.py — same rendering, same look.
 import server
 from prayer import parse_prayers, prayer_notes
+from letters import parse_letters
 
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "dist"
