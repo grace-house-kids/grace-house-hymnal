@@ -307,8 +307,10 @@ SECTIONS = [
     ("events",     "Events",          "What's coming up"),
     ("who-we-are", "Who We Are",      "What we believe"),
     ("letters",    "Letters",         "Past messages"),    
+    ("cookbook",   "Community Cookbook",  "Got a recipe?"),    
     ("poetry",      "Poetry",         "Ramblings pointed at grace"),
     ("tracts",     "Tracts",          "Free to download"),
+    ("resources",    "Resources",         "Gospel prints and more"),    
     ("kids",       "Kids Activities", "Word searches, mazes & coloring"),
 ]
 READY_SECTIONS = {"zine", "hymnal", "kids", "events"}
