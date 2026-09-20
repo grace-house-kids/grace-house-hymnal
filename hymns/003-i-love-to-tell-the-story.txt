@@ -26,7 +26,7 @@ C
 
 4
 [C]I love to tell the story, for [F]those who know it [C]best
-[G]seem hungering and [C]thirsting to hear it like the rest.
+[G]seem hungering and [C]thirsting to hear it like the [G]rest.
 [G]And when in scenes of [C]glory, I [Am]sing the new, new [Em]song,
 [F]it's still the old, [C]old story that [G]I have loved so [C]long.
 
