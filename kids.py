@@ -664,8 +664,11 @@ main { max-width: calc(8.5in + 50px); }
    engine): given an @page margin rule, it prints everything shifted
    about half an inch up, cutting off the top of the sheet. So KIDS_JS
    never gives Safari that rule. Safari prints with its own margins
-   instead, like any ordinary page, and gets only the part of the sheet
-   inside the border, 7.5 x 9.75 inches, centered (html.webkit-print). */
+   instead, like any ordinary page (about a quarter inch at the top and
+   sides, a bit over half an inch at the bottom), and stretches or
+   shrinks the sheet to fill the width between them. So Safari gets a
+   sheet with no border of its own that's already that wide and short
+   enough to fit: 8 x 10 inches (html.webkit-print). */
 @media print {
   html, body { margin: 0 !important; padding: 0 !important; }
   main { max-width: none !important; margin: 0 !important; padding: 0 !important; }
@@ -678,7 +681,7 @@ main { max-width: calc(8.5in + 50px); }
     break-inside: avoid;
     page-break-inside: avoid;
   }
-  html.webkit-print .sheet { width: 7.5in; height: 9.75in; margin: 0 auto; }
+  html.webkit-print .sheet { width: 8in; height: 10in; margin: 0 auto; }
   html.webkit-print .sheet-in { top: 0; right: 0; bottom: 0; left: 0; }
 }
 """
@@ -696,7 +699,7 @@ KIDS_JS = r"""
   // Safari, and every iPhone/iPad browser (all built on Safari's engine),
   // shift the whole printout up if the page sets its own print margins,
   // so they don't get that rule: they print with their own margins and
-  // a smaller sheet. Every other browser gets the edge-to-edge page, with
+  // an 8 x 10 inch sheet. Every other browser gets the edge-to-edge page, with
   // the sheet's own border. margin: 0 there also keeps the browser from
   // printing the web address (and the access key) on every sheet.
   // See "Printing" in KIDS_CSS.
