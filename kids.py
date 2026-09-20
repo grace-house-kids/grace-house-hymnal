@@ -30,16 +30,17 @@ Where things come from:
                  Each shuffle picks a new verse and new symbols. The
                  answer shows above the sheet, on screen only.
     Maze         a fresh maze on every shuffle, down the whole left side,
-                 walled into 3 or 4 parts joined only by green jump
-                 circles (same picture = hop across), plus two pairs
-                 that jump into sealed-off dead ends. A few gaps
-                 are drawn as dotted "false walls": each is the only way
-                 into the room behind it. One is needed to finish; the
-                 rest lead nowhere. Drawn over a faint grid. Each maze is
-                 checked before it's drawn: solvable, needs a jump, no
-                 pair joins places you could walk between, and it can't
-                 be done if the dotted walls were real.
-                 The two rules sit beside the MAZE label.
+                 walled into 3 or 4 parts joined only by jump circles
+                 (same picture = hop across), plus two pairs that jump
+                 into sealed-off dead ends. Some gaps are dotted doors,
+                 each the only way into the room behind it; they stay
+                 shut until you find the key, which waits in a dead end
+                 you can reach without any door. All black, no color,
+                 over a faint grid. Each maze is checked before it's
+                 drawn: solvable (key first, then doors), needs a jump,
+                 impossible without the key, and no pair joins places
+                 you could walk between. The two rules sit beside the
+                 MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
 
@@ -347,8 +348,9 @@ main { max-width: calc(8.5in + 50px); }
 .ev-when { font-weight: 700; }
 
 /* Maze: label with the two rules beside it, the maze filling the rest.
-   Jump circles are green so they never look like walls; false walls
-   are dotted. */
+   Everything is black, since sheets get printed in black and white.
+   Doors are dotted, jump circles are circles, and the key stands alone
+   (no circle, so it can't be mistaken for a jump). */
 .act-maze {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -595,16 +597,19 @@ KIDS_JS = r"""
           a dead end you can only get into, and out of, by jumping.
           No pair ever joins two places you could just walk between.
        4. Open a few extra gaps so each part has loops.
-       5. False walls: draw a few gaps as dotted walls. Each one is the
-          only way into the area behind it, so that area looks like a
-          sealed room. At least one is on the way to FINISH; the others
-          are rooms that go nowhere.
-       6. Check it: solvable, needs a jump, and impossible if you treat
-          the dotted walls as real walls.
+       5. Doors: draw a few gaps as dotted walls. Each one is the only
+          way into the area behind it. Doors stay shut until you've found
+          the key. At least one is on the way to FINISH; the others guard
+          rooms that go nowhere.
+       6. The key: in a dead end you can reach without any door.
+       7. Check it: solvable (key first, then doors), needs a jump, and
+          impossible without the key.
      Up to 300 tries per shuffle (fewer for a big maze); the best one
      gets drawn. */
   var CELL = 20;                       // one square, in drawing units (about 0.21 inch)
-  var MAZE_GREEN = '#15803d';
+  var INK = '#0a0a0a';                 // everything prints in black
+  // The key, in a 20 x 20 box: ring on the left, shaft, two teeth
+  var KEY_SHAPE = 'M9.5 10A3.7 3.7 0 1 1 2.1 10A3.7 3.7 0 1 1 9.5 10ZM9.5 10H18.5M15.2 10V13.6M18 10V12.8';
   // Pictures for the jump circles: solid shapes, easy to tell apart small
   var PAD_SHAPES = [
     'M10 2.4L12.1 8L18 8.2L13.3 11.9L14.9 17.6L10 14.3L5.1 17.6L6.7 11.9L2 8.2L7.9 8Z',   // star
@@ -645,6 +650,7 @@ KIDS_JS = r"""
     this.fake = {};                                 // gaps drawn as dotted "false walls"
     this.partner = new Int32Array(this.N).fill(-1); // jump circle -> its twin
     this.sym = {};                                  // jump circle -> its picture
+    this.keyCell = -1;                              // where the key is
   }
   Grid.prototype.nbrs = function (id) { return this.nb[id]; };
   Grid.prototype.key = function (a, b) {
@@ -675,6 +681,27 @@ KIDS_JS = r"""
     });
     if (jumps && this.partner[id] >= 0) out.push(this.partner[id]);
     return out;
+  };
+  // Solve it the way a kid has to: dotted doors stay shut until you've
+  // picked up the key. Each step tracks the square AND whether you're
+  // carrying the key (square + N means "has the key").
+  Grid.prototype.solve = function () {
+    var N = this.N, dist = new Int32Array(2 * N).fill(-1), prev = new Int32Array(2 * N).fill(-1);
+    var first = this.start + (this.start === this.keyCell ? N : 0), q = [first], h = 0;
+    dist[first] = 0;
+    while (h < q.length) {
+      var st = q[h++], cell = st % N, has = st >= N;
+      var ms = this.moves(cell, true, !has);
+      for (var i = 0; i < ms.length; i++) {
+        var ns = ms[i] + ((has || ms[i] === this.keyCell) ? N : 0);
+        if (dist[ns] < 0) { dist[ns] = dist[st] + 1; prev[ns] = st; q.push(ns); }
+      }
+    }
+    var end = -1;
+    [this.finish, this.finish + N].forEach(function (f) {
+      if (dist[f] >= 0 && (end < 0 || dist[f] < dist[end])) end = f;
+    });
+    return { len: end < 0 ? -1 : dist[end], end: end, dist: dist, prev: prev };
   };
   Grid.prototype.walk = function (src, jumps, solidFake) {
     var dist = new Int32Array(this.N).fill(-1), prev = new Int32Array(this.N).fill(-1);
@@ -893,22 +920,49 @@ KIDS_JS = r"""
       });
     }
 
+    // The key: at the end of a dead end you can reach from START without
+    // going through any door (jumps are fine). A true dead end if there is
+    // one, not a spot that only looks like one because a door is beside it
+    // (that would hand you the key right at the door). Picked from the
+    // farther third, so you have to go looking for it.
+    if (useFakes) {
+      var noDoors = g.walk(start, true, true).dist, ends = [], nearDoor = [];
+      for (var kc = 0; kc < N; kc++) {
+        if (noDoors[kc] < 0 || kc === start || kc === finish || g.partner[kc] >= 0) continue;
+        var sides = 0, doors = 0;
+        for (var ni = 0; ni < g.nb[kc].length; ni++) {
+          var nn = g.nb[kc][ni];
+          if (!g.isOpen(kc, nn)) continue;
+          if (g.fake[g.key(kc, nn)]) doors++; else sides++;
+        }
+        if (sides === 1) (doors ? nearDoor : ends).push(kc);
+      }
+      if (!ends.length) ends = nearDoor;
+      if (!ends.length) return null;
+      ends.sort(function (x1, x2) { return noDoors[x2] - noDoors[x1]; });
+      var far = ends.slice(0, Math.max(1, Math.ceil(ends.length / 3)));
+      g.keyCell = far[randInt(rng, far.length)];
+    }
+
     // The checks
-    var run = g.walk(start, true), len = run.dist[finish];
+    var sol = g.solve(), len = sol.len;
     if (len < 0) return null;                                        // must be solvable
     if (g.walk(start, false).dist[finish] >= 0) return null;          // must need a jump
     if (pairs.some(function (pr) {                                   // never jump where you could walk
       return g.walk(pr[0], false).dist[pr[1]] >= 0;
     })) return null;
-    if (useFakes && g.walk(start, true, true).dist[finish] >= 0) return null;  // must need a false wall
+    if (useFakes && g.walk(start, true, true).dist[finish] >= 0) return null;  // must need the key
     var onRoute = 0, reach = 0;
-    for (var q = finish; q !== start; q = run.prev[q]) {
-      var pq = run.prev[q];
-      if (g.adjacent(pq, q) && g.fake[g.key(pq, q)]) onRoute++;
+    for (var st = sol.end; sol.prev[st] >= 0; st = sol.prev[st]) {
+      var a2 = sol.prev[st] % N, b2 = st % N;
+      if (g.adjacent(a2, b2) && g.fake[g.key(a2, b2)]) onRoute++;
     }
-    for (var z = 0; z < N; z++) if (run.dist[z] >= 0) reach++;
+    for (var z = 0; z < N; z++) if (sol.dist[z] >= 0 || sol.dist[z + N] >= 0) reach++;
+    // How far out of your way the key takes you, next to ignoring doors
+    var detour = useFakes ? len - g.walk(start, true).dist[finish] : 0;
     g.good = !useFakes || len >= R + C;
-    g.score = len + 5 * Math.min(onRoute, 2) + 2 * fakes.length - 0.15 * (N - reach);
+    g.score = len + 5 * Math.min(onRoute, 2) + 2 * fakes.length + 0.5 * Math.min(detour, 30) -
+              0.15 * (N - reach);
     return g;
   }
 
@@ -967,9 +1021,16 @@ KIDS_JS = r"""
     for (var i = 0; i < g.N; i++) {
       if (g.partner[i] < 0) continue;
       out += '<circle cx="' + cx(i) + '" cy="' + cy(i) + '" r="8.2" fill="#ffffff" stroke="' +
-        MAZE_GREEN + '" stroke-width="1.8"/>' +
+        INK + '" stroke-width="1.8"/>' +
         '<path transform="translate(' + r1(cx(i) - 5.25) + ' ' + r1(cy(i) - 5.25) + ') scale(0.525)" ' +
-        'fill="' + MAZE_GREEN + '" d="' + PAD_SHAPES[g.sym[i]] + '"/>';
+        'fill="' + INK + '" d="' + PAD_SHAPES[g.sym[i]] + '"/>';
+    }
+
+    // The key: just a key, no circle (circles are for jumping)
+    if (g.keyCell >= 0) {
+      out += '<path transform="translate(' + r1(cx(g.keyCell) - 8) + ' ' + r1(cy(g.keyCell) - 8) + ') scale(0.8)" ' +
+        'd="' + KEY_SHAPE + '" fill="none" stroke="' + INK + '" stroke-width="2.4" ' +
+        'stroke-linecap="round" stroke-linejoin="round"/>';
     }
 
     function label(cell, text, ty) {
@@ -1117,18 +1178,18 @@ SHEET_WHEEL = (
     "</svg>"
 )
 
-# The maze's two rules, drawn the same way the maze draws them.
+# The maze's two rules, drawn the same way the maze draws them (all black).
 MAZE_RULES = (
     '<div class="maze-rules">'
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
-    '<circle cx="10" cy="10" r="8.2" fill="#ffffff" stroke="#15803d" stroke-width="1.8"/>'
-    '<path transform="translate(4.75 4.75) scale(0.525)" fill="#15803d" '
+    '<circle cx="10" cy="10" r="8.2" fill="#ffffff" stroke="#0a0a0a" stroke-width="1.8"/>'
+    '<path transform="translate(4.75 4.75) scale(0.525)" fill="#0a0a0a" '
     'd="M10 2.4L12.1 8L18 8.2L13.3 11.9L14.9 17.6L10 14.3L5.1 17.6L6.7 11.9L2 8.2L7.9 8Z"/>'
     "</svg>Same picture? Hop across!</span>"
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
-    '<path d="M0.5 10H4M16 10H19.5" stroke="#0a0a0a" stroke-width="2"/>'
-    '<path d="M6.4 10H13.6" stroke="#0a0a0a" stroke-width="2.3" stroke-linecap="round" stroke-dasharray="0 2.4"/>'
-    "</svg>Dotted wall? Walk through!</span>"
+    '<path d="M9.5 10A3.7 3.7 0 1 1 2.1 10A3.7 3.7 0 1 1 9.5 10ZM9.5 10H18.5M15.2 10V13.6M18 10V12.8" '
+    'fill="none" stroke="#0a0a0a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
+    "</svg>The key opens dotted doors.</span>"
     "</div>"
 )
 
