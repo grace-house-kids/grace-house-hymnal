@@ -1,31 +1,36 @@
 Amazing Grace
 
 1
-Amazing grace, how sweet the sound
-that saved a wretch like me!
-I once was lost, but now am found,
-was blind, but now I see.
+[G]Amazing grace, how [C]sweet the [G]sound
+that saved a wretch like [D]me!
+I [G]once was lost, but [C]now am [G]found,
+was [D]blind, but now I [G]see.
 
 2
-Was grace that taught my heart to fear,
-and grace my fears relieved;
-How precious did that grace appear
-the hour I first believed!
+[G]Was grace that taught my [C]heart to [G]fear,
+and grace my fears re[D]lieved;
+How [G]precious did that [C]grace ap[G]pear
+the [D]hour I first be[G]lieved!
 
 3
-The Lord has promised good to me,
-his word my hope secures;
-he will my shield and portion be
-as long as life endures.
+[G]The Lord has promised [C]good to [G]me,
+his word my hope se[D]cures;
+he [G]will my shield and [C]portion [G]be
+as [D]long as life en[G]dures.
 
 4
-The earth shall soon dissolve like snow,
-the sun forbear to shine;
-but God, who called me here below,
-will be forever mine.
+[G]The earth shall soon dis[C]solve like [G]snow,
+the sun forbear to [D]shine;
+but [G]God, who called me [C]here be[G]low,
+will [D]be forever [G]mine.
 
 5
-When we've been there ten thousand years,
-Bright shining as the sun,
-We've no less days to sing God's praise,
-Than when we first begun.
+[G]When we've been there ten [C]thousand [G]years,
+bright shining as the [D]sun,
+we've [G]no less days to [C]sing God's [G]praise,
+than [D]when we first be[G]gun.
+
+Notes
+G, C, D only
+Capo 3 for Bb
+3/4
