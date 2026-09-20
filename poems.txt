@@ -1,0 +1,22 @@
+# Poetry — a running chapbook. Lines starting with # never show.
+#
+# Each poem: its title on the first line, then the poem. Blank lines
+# between stanzas work the way you'd expect, and leading spaces are
+# kept, so you can indent. Put a line of three dashes (---) between
+# poems. Poems show in the order they're in this file, so add new ones
+# at the top if you want the newest first.
+#
+# Optional, each on its own line anywhere in a poem:
+#   [By: Name]          signs the poem at the bottom
+#   [Date: Fall 2026]   any text you like
+#
+# Example (take the "# " off these lines to try it):
+#
+# Title of the Poem
+# [Date: September 2026]
+#
+# First line of the first stanza
+# second line
+#
+# First line of the second stanza
+#     an indented line
