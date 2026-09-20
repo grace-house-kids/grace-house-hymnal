@@ -1,0 +1,52 @@
+# Word search themes for the kids activity sheet.
+#
+# The first line of each block is the theme's name (it prints beside
+# WORD SEARCH). The lines under it are its words, split by commas or
+# one per line. A word can have a space in it, like "Red Sea": the word
+# bank shows the space, the grid runs the letters together.
+#
+# Words need 3 to 10 letters (the grid is only about 10 squares across),
+# and each theme needs at least 6 words. 10 to 14 is best: each sheet
+# uses up to 10, so extras mean more variety.
+#
+# Put a blank line between themes. Lines starting with # are ignored.
+
+Noah's Ark
+Noah, ark, dove, rain, flood, rainbow, animals, raven
+olive, promise, forty days, Shem, Ham
+
+Creation
+light, water, land, plants, sun, moon, stars, fish
+birds, animals, Adam, Eve, garden, rest
+
+David and Goliath
+David, Goliath, sling, stones, giant, shepherd, sheep
+Saul, armor, brave, brook, sword, shield
+
+Jonah
+Jonah, fish, Nineveh, storm, boat, sailors, sea
+pray, vine, worm, three days, mercy
+
+Baby Jesus
+Mary, Joseph, Jesus, manger, stable, angel, shepherds
+star, wise men, gold, inn, Bethlehem, gifts
+
+Easter
+Jesus, cross, tomb, stone, risen, alive, Mary
+garden, angel, Sunday, life, Peter, linen
+
+Moses
+Moses, Egypt, Pharaoh, plagues, Red Sea, basket, staff
+manna, desert, tablets, Aaron, Miriam, bush
+
+Daniel
+Daniel, lions, den, king, Darius, pray, window
+angel, safe, faith, Babylon, shut, mouths
+
+Five Loaves
+bread, fish, loaves, boy, baskets, crowd, twelve
+hill, grass, thanks, share, disciples, Jesus
+
+Fruit of the Spirit
+love, joy, peace, patience, kindness, goodness
+gentleness, faithful, spirit, fruit, Galatians
