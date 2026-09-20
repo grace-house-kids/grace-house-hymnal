@@ -30,11 +30,13 @@ Where things come from:
                  answer shows above the sheet, on screen only.
     Maze         a fresh maze on every shuffle, walled into 2 or 3 parts
                  joined only by green numbered jump circles, plus one
-                 pair that jumps into a sealed-off dead end, and 3 to 6
-                 red one-way arrows, only ever in straight corridors, all
-                 over a faint grid. Each one is checked before it's
-                 drawn: solvable, needs a jump, no pair joins places you
-                 could walk between, and an arrow blocks a shortcut.
+                 pair that jumps into a sealed-off dead end. A few gaps
+                 are drawn as dotted "false walls": each is the only way
+                 into the room behind it. One is needed to finish; the
+                 rest lead nowhere. Drawn over a faint grid. Each maze is
+                 checked before it's drawn: solvable, needs a jump, no
+                 pair joins places you could walk between, and it can't
+                 be done if the dotted walls were real.
                  The two rules sit beside the MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
@@ -339,7 +341,8 @@ main { max-width: calc(8.5in + 50px); }
 .ev-when { font-weight: 700; }
 
 /* Maze: label with the two rules beside it, the maze filling the rest.
-   Arrows are red and jump circles green, so they never look like walls. */
+   Jump circles are green so they never look like walls; false walls
+   are dotted. */
 .act-maze {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -591,13 +594,16 @@ KIDS_JS = r"""
           across). One extra pair leads into a small sealed-off pocket:
           a dead end you can only get into, and out of, by jumping.
           No pair ever joins two places you could just walk between.
-       4. Open a few extra gaps so each part has loops, then add 3 to 6
-          one-way arrows.
-       5. Check it: it must be solvable, it must need the jump circles,
-          and at least one arrow must block a shortcut.
+       4. Open a few extra gaps so each part has loops.
+       5. False walls: draw a few gaps as dotted walls. Each one is the
+          only way into the area behind it, so that area looks like a
+          sealed room. At least one is on the way to FINISH; the others
+          are rooms that go nowhere.
+       6. Check it: solvable, needs a jump, and impossible if you treat
+          the dotted walls as real walls.
      About 300 tries per shuffle; the best one gets drawn. */
   var CELL = 22;                       // one square, in drawing units (about 1/4 inch)
-  var MAZE_RED = '#e0241b', MAZE_GREEN = '#15803d';
+  var MAZE_GREEN = '#15803d';
 
   function randInt(rng, n) { return Math.floor(rng() * n); }
   function r1(n) { return Math.round(n * 10) / 10; }
@@ -606,7 +612,7 @@ KIDS_JS = r"""
     this.R = R; this.C = C; this.N = R * C;
     this.openR = new Uint8Array(this.N);            // gap to the right of a square
     this.openD = new Uint8Array(this.N);            // gap below a square
-    this.arrow = {};                                // gap -> the square you may leave from
+    this.fake = {};                                 // gaps drawn as dotted "false walls"
     this.partner = new Int32Array(this.N).fill(-1); // jump circle -> its twin
     this.num = {};                                  // jump circle -> its number
   }
@@ -635,26 +641,24 @@ KIDS_JS = r"""
     var g = this;
     return this.nbrs(id).filter(function (n) { return g.isOpen(id, n); }).length;
   };
-  // Where can you go from here? arrows: obey them. jumps: allow hopping.
-  Grid.prototype.moves = function (id, arrows, jumps) {
+  // Where can you go from here? jumps: allow hopping between circles.
+  // solidFake: pretend the dotted walls are real walls.
+  Grid.prototype.moves = function (id, jumps, solidFake) {
     var g = this, out = [];
     this.nbrs(id).forEach(function (n) {
       if (!g.isOpen(id, n)) return;
-      if (arrows) {
-        var from = g.arrow[g.key(id, n)];
-        if (from !== undefined && from !== id) return;
-      }
+      if (solidFake && g.fake[g.key(id, n)]) return;
       out.push(n);
     });
     if (jumps && this.partner[id] >= 0) out.push(this.partner[id]);
     return out;
   };
-  Grid.prototype.walk = function (src, arrows, jumps) {
+  Grid.prototype.walk = function (src, jumps, solidFake) {
     var dist = new Int32Array(this.N).fill(-1), prev = new Int32Array(this.N).fill(-1);
     var q = [src], h = 0;
     dist[src] = 0;
     while (h < q.length) {
-      var cur = q[h++], ms = this.moves(cur, arrows, jumps);
+      var cur = q[h++], ms = this.moves(cur, jumps, solidFake);
       for (var i = 0; i < ms.length; i++) {
         if (dist[ms[i]] < 0) { dist[ms[i]] = dist[cur] + 1; prev[ms[i]] = cur; q.push(ms[i]); }
       }
@@ -678,13 +682,13 @@ KIDS_JS = r"""
     g.finish = (g.R - 1) * g.C + randInt(rng, g.C);
   }
 
-  function mazeAttempt(R, C, rng, useArrows) {
+  function mazeAttempt(R, C, rng, useFakes) {
     var g = new Grid(R, C), N = g.N, start, finish;
     carve(g, rng);
     start = g.start; finish = g.finish;
 
     // Wall it into parts at 1 or 2 spots along the way from START to FINISH
-    var t = g.walk(start, false, false), path = [];
+    var t = g.walk(start, false), path = [];
     for (var p = finish; p !== -1; p = t.prev[p]) path.unshift(p);
     var L = path.length - 1;
     if (L < 8) return null;
@@ -709,7 +713,7 @@ KIDS_JS = r"""
       if (routeCell[e[0]] && routeCell[e[1]]) return false;
       g.setOpen(e[0], e[1], 0);
       var sides = [e[0], e[1]].map(function (c) {
-        var d = g.walk(c, false, false).dist, n = 0, touchesPath = false;
+        var d = g.walk(c, false).dist, n = 0, touchesPath = false;
         for (var k = 0; k < N; k++) if (d[k] >= 0) { n++; if (routeCell[k]) touchesPath = true; }
         return { cell: c, size: n, touchesPath: touchesPath };
       });
@@ -722,7 +726,7 @@ KIDS_JS = r"""
     var comp = new Int32Array(N).fill(-1), sizes = [];
     for (var s = 0; s < N; s++) {
       if (comp[s] >= 0) continue;
-      var d0 = g.walk(s, false, false).dist, n = 0;
+      var d0 = g.walk(s, false).dist, n = 0;
       for (var k = 0; k < N; k++) if (d0[k] >= 0) { comp[k] = sizes.length; n++; }
       sizes.push(n);
     }
@@ -744,7 +748,7 @@ KIDS_JS = r"""
 
     // Jump circles: never on START/FINISH or right beside them, never
     // touching each other, and happiest tucked into dead ends.
-    var dS = g.walk(start, false, false).dist, dF = g.walk(finish, false, false).dist;
+    var dS = g.walk(start, false).dist, dF = g.walk(finish, false).dist;
     var pads = [];
     function placePad(c, awayFrom) {
       var cands = [];
@@ -758,7 +762,7 @@ KIDS_JS = r"""
       var dead = cands.filter(function (id) { return g.degree(id) === 1; });
       var pool = dead.length >= 3 ? dead : cands;
       if (awayFrom != null) {                 // pick from the farther half
-        var d = g.walk(awayFrom, false, false).dist;
+        var d = g.walk(awayFrom, false).dist;
         pool = pool.slice().sort(function (x, y) { return d[y] - d[x]; });
         pool = pool.slice(0, Math.max(1, Math.ceil(pool.length / 2)));
       }
@@ -786,83 +790,82 @@ KIDS_JS = r"""
       g.num[pr[0]] = g.num[pr[1]] = nums[i];
     });
 
-    // One-way arrows: 3 to 5 at random (plus maybe one more on purpose), on
-    // open gaps in straight corridors, never touching START, FINISH or a
-    // jump circle, and spread out so they don't bunch up in one corner
-    // An arrow only goes between two squares that are both plain straight
-    // corridor: open on exactly two opposite sides, one of them the arrow's
-    // own gap. Then any route through that stretch has to cross the arrow,
-    // and there's no doubt about what it blocks.
-    function straight(id, other) {
-      var opposite = 2 * id - other;   // the square on the far side
-      var open = g.nbrs(id).filter(function (n) { return g.isOpen(id, n); });
-      return open.length === 2 && open.indexOf(other) !== -1 && open.indexOf(opposite) !== -1;
-    }
-    function inCorridor(e) { return straight(e[0], e[1]) && straight(e[1], e[0]); }
-    function crowded(e1, e2) {       // arrows stay at least two squares apart
-      return e1.some(function (a) {
-        return e2.some(function (b) {
-          return Math.abs(Math.floor(a / C) - Math.floor(b / C)) + Math.abs(a % C - b % C) <= 2;
+    // False walls. Each one goes on a gap that is the only way (on foot)
+    // into the area behind it, so drawn dotted, that area looks sealed.
+    // Never touching START or FINISH, and spread out.
+    var fakes = [];
+    function tooClose(e) {
+      return fakes.some(function (o) {
+        return o.some(function (x) {
+          return e.some(function (y) {
+            return Math.abs(Math.floor(x / C) - Math.floor(y / C)) + Math.abs(x % C - y % C) <= 2;
+          });
         });
       });
     }
-    if (useArrows) {
-      var gaps = [], taken = [], want = 3 + randInt(rng, 3);
-      for (var x = 0; x < N; x++) {
-        g.nbrs(x).forEach(function (y) {
-          if (y < x || !g.isOpen(x, y)) return;
-          if (x === start || y === start || x === finish || y === finish) return;
-          if (g.partner[x] >= 0 || g.partner[y] >= 0) return;
-          if (!inCorridor([x, y])) return;
-          gaps.push([x, y]);
-        });
-      }
-      shuffled(gaps, rng).forEach(function (e) {
-        if (taken.length >= want) return;
-        if (taken.some(function (o) { return crowded(o, e); })) return;
-        taken.push(e);
-        g.arrow[g.key(e[0], e[1])] = rng() < 0.5 ? e[0] : e[1];
+    function room(e) {               // size of the smaller side, or 0 if it isn't sealed
+      g.setOpen(e[0], e[1], 0);
+      var d0 = g.walk(e[0], false).dist, d1 = g.walk(e[1], false).dist;
+      g.setOpen(e[0], e[1], 1);
+      if (d0[e[1]] >= 0) return 0;   // there's another way round: not a room
+      var n0 = 0, n1 = 0;
+      for (var k = 0; k < N; k++) { if (d0[k] >= 0) n0++; if (d1[k] >= 0) n1++; }
+      return { size: Math.min(n0, n1), side: n0 <= n1 ? d0 : d1 };
+    }
+    function usable(e) {
+      return e[0] !== start && e[1] !== start && e[0] !== finish && e[1] !== finish &&
+             !g.fake[g.key(e[0], e[1])] && !tooClose(e);
+    }
+    if (useFakes) {
+      // One on the way to FINISH that you can't do without
+      var run0 = g.walk(start, true), route = [];
+      for (var p2 = finish; p2 !== -1; p2 = run0.prev[p2]) route.unshift(p2);
+      var steps = route.slice(1).map(function (c, i) { return [route[i], c]; });
+      var needed = shuffled(steps, rng).some(function (e) {
+        if (!g.adjacent(e[0], e[1]) || !usable(e)) return false;   // a jump, or a bad spot
+        var rm = room(e);
+        if (!rm || rm.size < 3) return false;
+        var k2 = g.key(e[0], e[1]);
+        g.fake[k2] = true;
+        if (g.walk(start, true, true).dist[finish] < 0) { fakes.push(e); return true; }
+        delete g.fake[k2];
+        return false;
       });
+      if (!needed) return null;
 
-      // If no arrow blocks the easy way yet, point one gap on the easy way
-      // backward, as long as the maze can still be solved.
-      var easy = g.walk(start, false, true);
-      if (easy.dist[finish] >= 0 && g.walk(start, true, true).dist[finish] === easy.dist[finish]) {
-        var route = [];
-        for (var p2 = finish; p2 !== -1; p2 = easy.prev[p2]) route.unshift(p2);
-        var steps = route.slice(1).map(function (c, i) { return [route[i], c]; });
-        shuffled(steps, rng).some(function (e) {
-          if (!g.adjacent(e[0], e[1])) return false;            // that step was a jump
-          if (!inCorridor(e)) return false;
-          if (e.some(function (c) { return c === start || c === finish || g.partner[c] >= 0; })) return false;
-          if (taken.some(function (o) { return crowded(o, e); })) return false;
-          var k2 = g.key(e[0], e[1]);
-          g.arrow[k2] = e[1];                                   // only lets you go back
-          if (g.walk(start, true, true).dist[finish] > easy.dist[finish]) { taken.push(e); return true; }
-          delete g.arrow[k2];
-          return false;
-        });
+      // 2 or 3 more that lead into rooms with no START or FINISH in them
+      var want = fakes.length + 2 + randInt(rng, 2), gaps = [];
+      for (var x = 0; x < N; x++) {
+        g.nbrs(x).forEach(function (y) { if (y > x && g.isOpen(x, y)) gaps.push([x, y]); });
       }
+      shuffled(gaps, rng).some(function (e) {
+        if (fakes.length >= want) return true;
+        if (!usable(e)) return false;
+        var rm = room(e);
+        if (!rm || rm.size < 3 || rm.size > N * 0.3) return false;
+        if (rm.side[start] >= 0 || rm.side[finish] >= 0) return false;
+        g.fake[g.key(e[0], e[1])] = true;
+        fakes.push(e);
+        return false;
+      });
     }
 
     // The checks
-    var run = g.walk(start, true, true), len = run.dist[finish];
-    if (len < 0) return null;                                    // must be solvable
-    if (g.walk(start, false, false).dist[finish] >= 0) return null;  // must need a jump
-    if (pairs.some(function (pr) {                               // never jump where you could walk
-      return g.walk(pr[0], false, false).dist[pr[1]] >= 0;
+    var run = g.walk(start, true), len = run.dist[finish];
+    if (len < 0) return null;                                        // must be solvable
+    if (g.walk(start, false).dist[finish] >= 0) return null;          // must need a jump
+    if (pairs.some(function (pr) {                                   // never jump where you could walk
+      return g.walk(pr[0], false).dist[pr[1]] >= 0;
     })) return null;
-    var free = g.walk(start, false, true).dist[finish];          // if arrows went both ways
-    var onPath = 0, reach = 0;
+    if (useFakes && g.walk(start, true, true).dist[finish] >= 0) return null;  // must need a false wall
+    var onRoute = 0, reach = 0;
     for (var q = finish; q !== start; q = run.prev[q]) {
       var pq = run.prev[q];
-      if (g.adjacent(pq, q) && g.arrow[g.key(pq, q)] !== undefined) onPath++;
+      if (g.adjacent(pq, q) && g.fake[g.key(pq, q)]) onRoute++;
     }
     for (var z = 0; z < N; z++) if (run.dist[z] >= 0) reach++;
-    var blocked = len - free;                                    // > 0: an arrow blocks a shortcut
-    g.good = !useArrows || (blocked > 0 && onPath >= 1 && len >= R + C);
-    g.score = len + 6 * Math.min(onPath, 3) + Math.min(blocked, 12) +
-              (blocked > 0 ? 10 : 0) - 0.15 * (N - reach);
+    g.good = !useFakes || len >= R + C;
+    g.score = len + 5 * Math.min(onRoute, 2) + 2 * fakes.length - 0.15 * (N - reach);
     return g;
   }
 
@@ -874,7 +877,7 @@ KIDS_JS = r"""
       if (!best || (g.good && !best.good) || (g.good === best.good && g.score > best.score)) best = g;
     }
     if (best) return best;
-    for (i = 0; i < 60; i++) {              // no arrows: always solvable
+    for (i = 0; i < 60; i++) {              // no false walls: jumps only
       g = mazeAttempt(R, C, rng, false);
       if (g) return g;
     }
@@ -889,37 +892,33 @@ KIDS_JS = r"""
     function cx(id) { return ox + (id % C + 0.5) * CELL; }
     function cy(id) { return oy + (Math.floor(id / C) + 0.5) * CELL; }
 
-    var d = '';
-    function seg(x1, y1, x2, y2) { d += 'M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2; }
+    var d = '', grid = '', dots = '';
+    function seg(x1, y1, x2, y2) { return 'M' + x1 + ' ' + y1 + 'L' + x2 + ' ' + y2; }
     for (var id = 0; id < g.N; id++) {
       var r = Math.floor(id / C), c = id % C, x = ox + c * CELL, y = oy + r * CELL;
-      if (r === 0 ? id !== g.start : !g.isOpen(id, id - C)) seg(x, y, x + CELL, y);
-      if (c === 0 || !g.isOpen(id, id - 1)) seg(x, y, x, y + CELL);
-      if (c === C - 1) seg(x + CELL, y, x + CELL, y + CELL);
-      if (r === R - 1 && id !== g.finish) seg(x, y + CELL, x + CELL, y + CELL);
+      // walls
+      if (r === 0 ? id !== g.start : !g.isOpen(id, id - C)) d += seg(x, y, x + CELL, y);
+      if (c === 0 || !g.isOpen(id, id - 1)) d += seg(x, y, x, y + CELL);
+      if (c === C - 1) d += seg(x + CELL, y, x + CELL, y + CELL);
+      if (r === R - 1 && id !== g.finish) d += seg(x, y + CELL, x + CELL, y + CELL);
+      // faint grid on open gaps, and dots on false walls
+      if (c < C - 1 && g.isOpen(id, id + 1)) {
+        if (g.fake[g.key(id, id + 1)]) dots += seg(x + CELL, y + 2.6, x + CELL, y + CELL - 2.6);
+        else grid += seg(x + CELL, y, x + CELL, y + CELL);
+      }
+      if (r < R - 1 && g.isOpen(id, id + C)) {
+        if (g.fake[g.key(id, id + C)]) dots += seg(x + 2.6, y + CELL, x + CELL - 2.6, y + CELL);
+        else grid += seg(x, y + CELL, x + CELL, y + CELL);
+      }
     }
-    // A faint grid under everything, so it's clear each arrow sits on
-    // the line between two squares
-    var grid = '';
-    for (var gc = 1; gc < C; gc++) grid += 'M' + (ox + gc * CELL) + ' ' + oy + 'V' + (oy + H);
-    for (var gr = 1; gr < R; gr++) grid += 'M' + ox + ' ' + (oy + gr * CELL) + 'H' + (ox + W);
     var out = '<svg class="maze-svg" viewBox="0 0 ' + vw + ' ' + vh + '" ' +
       'preserveAspectRatio="xMidYMid meet" role="img" aria-label="Maze">' +
       '<path d="' + grid + '" fill="none" stroke="#d6d6d6" stroke-width="0.8"/>' +
-      '<path d="' + d + '" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="square"/>';
-
-    Object.keys(g.arrow).forEach(function (k) {
-      k = +k;
-      var lo = k >> 1, hi = (k & 1) ? lo + C : lo + 1;
-      var from = g.arrow[k], to = from === lo ? hi : lo;
-      var dx = (cx(to) - cx(from)) / CELL, dy = (cy(to) - cy(from)) / CELL;
-      var mx = (cx(from) + cx(to)) / 2, my = (cy(from) + cy(to)) / 2;
-      var bx = mx + 2 * dx, by = my + 2 * dy, px = -dy * 4.6, py = dx * 4.6;
-      out += '<path d="M' + r1(mx - 8 * dx) + ' ' + r1(my - 8 * dy) + 'L' + r1(bx) + ' ' + r1(by) +
-        '" stroke="' + MAZE_RED + '" stroke-width="2.6" stroke-linecap="round"/>' +
-        '<path d="M' + r1(mx + 9 * dx) + ' ' + r1(my + 9 * dy) + 'L' + r1(bx + px) + ' ' + r1(by + py) +
-        'L' + r1(bx - px) + ' ' + r1(by - py) + 'Z" fill="' + MAZE_RED + '"/>';
-    });
+      '<path d="' + d + '" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="square"/>' +
+      // Dots packed tight: reads as a wall from across the page, clearly
+      // broken up close
+      '<path d="' + dots + '" fill="none" stroke="#0a0a0a" stroke-width="2.5" ' +
+      'stroke-linecap="round" stroke-dasharray="0 3.6"/>';
 
     for (var i = 0; i < g.N; i++) {
       if (g.partner[i] < 0) continue;
@@ -1076,7 +1075,7 @@ SHEET_WHEEL = (
     "</svg>"
 )
 
-# The maze's two rules, drawn in the same red and green as the maze.
+# The maze's two rules, drawn the same way the maze draws them.
 MAZE_RULES = (
     '<div class="maze-rules">'
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
@@ -1084,9 +1083,9 @@ MAZE_RULES = (
     '<text class="maze-num" x="10" y="10.5" text-anchor="middle" dominant-baseline="central">1</text>'
     "</svg>Same number? Hop across!</span>"
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
-    '<path d="M2.5 10H11" stroke="#e0241b" stroke-width="2.6" stroke-linecap="round"/>'
-    '<path d="M18 10L10.5 5.4V14.6Z" fill="#e0241b"/>'
-    "</svg>Arrows go one way only.</span>"
+    '<path d="M0.5 10H4M16 10H19.5" stroke="#0a0a0a" stroke-width="2"/>'
+    '<path d="M6.4 10H13.6" stroke="#0a0a0a" stroke-width="2.3" stroke-linecap="round" stroke-dasharray="0 2.4"/>'
+    "</svg>Dotted wall? Walk through!</span>"
     "</div>"
 )
 
