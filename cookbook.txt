@@ -10,16 +10,23 @@
 # Then, in any order: From, Prep, Cook, Total, Serves, Icon
 # Then the sections: Ingredients, Directions, Notes
 #
+# Icons available:
+# apple  bowl  bread  burrito  cake  cheese  chicken  coffee  cookie
+# corn  chili  dish  drink  egg  fish  fork  icecream  jar  muffin
+# noodles  pancakes  pepper  pie  pizza  pot  roast  salad  sandwich
+# skillet  taco  waffle 
+#
 # Everything is optional except the first line. Leave out what you
 # don't have and the page just skips it.
 
 
-Mike's Awesome Burritos
-Mike's Awesome Burritos
-From: Mike
+Eli's Awesome Burritos
+Eli's Awesome Burritos
+From: Eli
 Prep: 10 min
 Cook: 20 min
 Serves: 4
+Icon: burrito
 
 Ingredients
 Frozen waffles, a cup of frozen bananas, a splash of pickle juice
@@ -30,19 +37,20 @@ Directions
 3. Make burrito
 
 Notes
-Mike swears by the pickle juice. We have questions.
+Pickle juice is non-negotiable. Do not question.
 
 ------------------------------------------------------------
 
-Brenda's Sunday Chili
-Brenda's Sunday Chili
-From: Brenda
+Nick's Sunday Chili
+Nick's Sunday Chili
+From: Probably not Nick
 Prep: 15 min
 Cook: 2 hr
 Serves: 10 to 12
+Icon: chili
 
-This one has fed the whole living room more Sundays than we can count.
-It doubles fine in the big blue pot.
+This one could feed the whole living room.
+It doubles fine in a big blue pot.
 
 Ingredients
 - 2 lbs ground beef
@@ -67,9 +75,9 @@ Leftovers are better on Monday.
 
 ------------------------------------------------------------
 
-Anne's Skillet Cornbread
-Anne's Skillet Cornbread
-From: Anne
+Tiffany's Skillet Cornbread
+Tiffany's Skillet Cornbread
+From: Not Tiffany
 Prep: 10 min
 Cook: 25 min
 Serves: 8
