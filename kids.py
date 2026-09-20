@@ -14,9 +14,10 @@ gives a fresh sheet every time, with nothing to rebuild.
     │ (coded verse, with blanks to fill in)    │
     │ KEY (symbols and what they stand for)    │
     ├────────────────────┬─────────────────────┤
-    │ HIDDEN PICTURE     │ WORD SEARCH         │
-    ├────────────────────┼─────────────────────┤
-    │ MAZE               │ DRAW IT             │
+    │ MAZE               │ WORD SEARCH         │
+    │ (runs the whole    │                     │
+    │  left side)        ├─────────────────────┤
+    │                    │ DRAW IT             │
     ├────────────────────┴─────────────────────┤
     │ NEXT UP  (next event from events.txt)    │
     └──────────────────────────────────────────┘
@@ -28,9 +29,10 @@ Where things come from:
                  code, then look the verse up in a Bible.
                  Each shuffle picks a new verse and new symbols. The
                  answer shows above the sheet, on screen only.
-    Maze         a fresh maze on every shuffle, walled into 2 or 3 parts
-                 joined only by green numbered jump circles, plus one
-                 pair that jumps into a sealed-off dead end. A few gaps
+    Maze         a fresh maze on every shuffle, down the whole left side,
+                 walled into 3 or 4 parts joined only by green jump
+                 circles (same picture = hop across), plus two pairs
+                 that jump into sealed-off dead ends. A few gaps
                  are drawn as dotted "false walls": each is the only way
                  into the room behind it. One is needed to finish; the
                  rest lead nowhere. Drawn over a faint grid. Each maze is
@@ -187,9 +189,13 @@ main { max-width: calc(8.5in + 50px); }
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "maze words" "maze draw";   /* the maze runs the whole left side */
   gap: 0.16in;
   min-height: 0;
 }
+.act-maze { grid-area: maze; }
+.act-words { grid-area: words; }
+.act-draw { grid-area: draw; }
 .act {
   position: relative;
   display: flex;
@@ -363,12 +369,6 @@ main { max-width: calc(8.5in + 50px); }
 .maze-rules span { display: flex; align-items: center; gap: 5px; }
 .maze-rules svg { width: 0.17in; height: 0.17in; flex-shrink: 0; }
 .maze-svg { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-.maze-num {
-  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
-  font-weight: 800;
-  font-size: 12px;
-  fill: #15803d;
-}
 .maze-end {
   font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
   font-weight: 800;
@@ -601,29 +601,52 @@ KIDS_JS = r"""
           are rooms that go nowhere.
        6. Check it: solvable, needs a jump, and impossible if you treat
           the dotted walls as real walls.
-     About 300 tries per shuffle; the best one gets drawn. */
-  var CELL = 22;                       // one square, in drawing units (about 1/4 inch)
+     Up to 300 tries per shuffle (fewer for a big maze); the best one
+     gets drawn. */
+  var CELL = 20;                       // one square, in drawing units (about 0.21 inch)
   var MAZE_GREEN = '#15803d';
+  // Pictures for the jump circles: solid shapes, easy to tell apart small
+  var PAD_SHAPES = [
+    'M10 2.4L12.1 8L18 8.2L13.3 11.9L14.9 17.6L10 14.3L5.1 17.6L6.7 11.9L2 8.2L7.9 8Z',   // star
+    'M10 16.5C4.5 12.5 2.5 9.8 2.5 7.2C2.5 4.8 4.3 3.3 6.3 3.3C7.9 3.3 9.2 4.2 10 5.6C10.8 4.2 12.1 3.3 13.7 3.3C15.7 3.3 17.5 4.8 17.5 7.2C17.5 9.8 15.5 12.5 10 16.5Z', // heart
+    'M13 3.4A7.25 7.25 0 1 0 13 16.6A7 7 0 0 1 13 3.4Z',                              // moon
+    'M10 2L18 10L10 18L2 10Z',                                                        // diamond
+    'M10 2.5L18 17H2Z',                                                               // triangle
+    'M3.5 3.5H16.5V16.5H3.5Z',                                                        // square
+    'M11.5 1.5L4 11H9.5L8 18.5L16 8.5H10.5Z'                                          // lightning
+  ];
 
   function randInt(rng, n) { return Math.floor(rng() * n); }
   function r1(n) { return Math.round(n * 10) / 10; }
 
+  // Each square's neighbors, worked out once per maze size (the checks
+  // walk the maze thousands of times per shuffle, so this matters)
+  var NBR_CACHE = {};
+  function neighborLists(R, C) {
+    var k = R + 'x' + C;
+    if (NBR_CACHE[k]) return NBR_CACHE[k];
+    var lists = [];
+    for (var id = 0; id < R * C; id++) {
+      var r = Math.floor(id / C), c = id % C, out = [];
+      if (r > 0) out.push(id - C);
+      if (r < R - 1) out.push(id + C);
+      if (c > 0) out.push(id - 1);
+      if (c < C - 1) out.push(id + 1);
+      lists.push(out);
+    }
+    return (NBR_CACHE[k] = lists);
+  }
+
   function Grid(R, C) {
     this.R = R; this.C = C; this.N = R * C;
+    this.nb = neighborLists(R, C);
     this.openR = new Uint8Array(this.N);            // gap to the right of a square
     this.openD = new Uint8Array(this.N);            // gap below a square
     this.fake = {};                                 // gaps drawn as dotted "false walls"
     this.partner = new Int32Array(this.N).fill(-1); // jump circle -> its twin
-    this.num = {};                                  // jump circle -> its number
+    this.sym = {};                                  // jump circle -> its picture
   }
-  Grid.prototype.nbrs = function (id) {
-    var C = this.C, r = Math.floor(id / C), c = id % C, out = [];
-    if (r > 0) out.push(id - C);
-    if (r < this.R - 1) out.push(id + C);
-    if (c > 0) out.push(id - 1);
-    if (c < C - 1) out.push(id + 1);
-    return out;
-  };
+  Grid.prototype.nbrs = function (id) { return this.nb[id]; };
   Grid.prototype.key = function (a, b) {
     var lo = Math.min(a, b), hi = Math.max(a, b);
     return lo * 2 + (hi - lo === 1 ? 0 : 1);
@@ -696,32 +719,45 @@ KIDS_JS = r"""
       var a = Math.floor(L * lo), span = Math.max(1, Math.floor(L * (hi - lo)));
       return Math.min(L - 1, a + randInt(rng, span));
     }
-    var cuts = (N >= 90 && rng() < 0.65) ? [spot(0.2, 0.42), spot(0.58, 0.8)] : [spot(0.3, 0.7)];
+    var cuts;
+    if (N >= 250) cuts = rng() < 0.5 ? [spot(0.15, 0.3), spot(0.42, 0.58), spot(0.7, 0.85)]
+                                     : [spot(0.2, 0.42), spot(0.58, 0.8)];
+    else if (N >= 90 && rng() < 0.65) cuts = [spot(0.2, 0.42), spot(0.58, 0.8)];
+    else cuts = [spot(0.3, 0.7)];
     cuts.forEach(function (i) { g.setOpen(path[i], path[i + 1], 0); });
 
-    // Seal off a small pocket away from the route (5 to ~14 squares).
-    // The extra jump pair leads in there: a dead end you can only reach,
+    // Seal off a small pocket away from the route (two in a big maze).
+    // An extra jump pair leads into each: a dead end you can only reach,
     // and only leave, by jumping.
-    var routeCell = new Uint8Array(N);
+    var routeCell = new Uint8Array(N), inPocket = new Uint8Array(N);
     path.forEach(function (c) { routeCell[c] = 1; });
-    var tree = [];
-    for (var u = 0; u < N; u++) {
-      g.nbrs(u).forEach(function (v) { if (v > u && g.isOpen(u, v)) tree.push([u, v]); });
-    }
-    var pocketMax = Math.max(8, Math.round(N * 0.11)), pocketCell = -1;
-    shuffled(tree, rng).slice(0, 60).some(function (e) {
-      if (routeCell[e[0]] && routeCell[e[1]]) return false;
-      g.setOpen(e[0], e[1], 0);
-      var sides = [e[0], e[1]].map(function (c) {
-        var d = g.walk(c, false).dist, n = 0, touchesPath = false;
-        for (var k = 0; k < N; k++) if (d[k] >= 0) { n++; if (routeCell[k]) touchesPath = true; }
-        return { cell: c, size: n, touchesPath: touchesPath };
+    var pocketMax = Math.min(24, Math.max(8, Math.round(N * 0.11)));
+    var pocketCells = [], pocketsWanted = N >= 250 ? 2 : 1;
+    for (var pk = 0; pk < pocketsWanted; pk++) {
+      var tree = [];
+      for (var u = 0; u < N; u++) {
+        g.nbrs(u).forEach(function (v) {
+          if (v > u && g.isOpen(u, v) && !inPocket[u] && !inPocket[v]) tree.push([u, v]);
+        });
+      }
+      shuffled(tree, rng).slice(0, 40).some(function (e) {
+        if (routeCell[e[0]] && routeCell[e[1]]) return false;
+        g.setOpen(e[0], e[1], 0);
+        var sides = [e[0], e[1]].map(function (c) {
+          var d = g.walk(c, false).dist, n = 0, touchesPath = false;
+          for (var k = 0; k < N; k++) if (d[k] >= 0) { n++; if (routeCell[k]) touchesPath = true; }
+          return { cell: c, size: n, touchesPath: touchesPath, dist: d };
+        });
+        var pocket = sides.filter(function (sd) { return !sd.touchesPath; })[0];
+        if (pocket && pocket.size >= 5 && pocket.size <= pocketMax) {
+          pocketCells.push(pocket.cell);
+          for (var k2 = 0; k2 < N; k2++) if (pocket.dist[k2] >= 0) inPocket[k2] = 1;
+          return true;
+        }
+        g.setOpen(e[0], e[1], 1);               // not a good pocket: put the gap back
+        return false;
       });
-      var pocket = sides.filter(function (sd) { return !sd.touchesPath; })[0];
-      if (pocket && pocket.size >= 5 && pocket.size <= pocketMax) { pocketCell = pocket.cell; return true; }
-      g.setOpen(e[0], e[1], 1);                 // not a good pocket: put the gap back
-      return false;
-    });
+    }
 
     var comp = new Int32Array(N).fill(-1), sizes = [];
     for (var s = 0; s < N; s++) {
@@ -733,7 +769,8 @@ KIDS_JS = r"""
     var chain = [comp[start]];      // the parts, in the order you pass through them
     cuts.forEach(function (i) { chain.push(comp[path[i + 1]]); });
     if (chain[chain.length - 1] !== comp[finish]) return null;
-    if (chain.some(function (c) { return sizes[c] < N * 0.18; })) return null;
+    var minPart = chain.length >= 4 ? 0.12 : 0.18;
+    if (chain.some(function (c) { return sizes[c] < N * minPart; })) return null;
 
     // A few extra gaps inside each part, so there are loops to get lost in
     var walls = [];
@@ -778,16 +815,17 @@ KIDS_JS = r"""
       pairs.push([from, to]);
       if (!last) from = placePad(chain[j], to);
     }
-    if (pocketCell >= 0) {                             // the pair that leads nowhere
+    pocketCells.forEach(function (pc) {                // pairs that lead nowhere
       var e1 = placePad(chain[randInt(rng, chain.length)], null);
-      var e2 = e1 < 0 ? -1 : placePad(comp[pocketCell], null);
+      var e2 = e1 < 0 ? -1 : placePad(comp[pc], null);
       if (e1 >= 0 && e2 >= 0) pairs.push([e1, e2]);
-    }
-    var nums = shuffled(pairs.map(function (x, i) { return i + 1; }), rng);
+    });
+    // Each pair gets its own picture, so there's no order to read into
+    var pics = shuffled(PAD_SHAPES.map(function (x, i) { return i; }), rng);
     pairs.forEach(function (pr, i) {
       g.partner[pr[0]] = pr[1];
       g.partner[pr[1]] = pr[0];
-      g.num[pr[0]] = g.num[pr[1]] = nums[i];
+      g.sym[pr[0]] = g.sym[pr[1]] = pics[i % pics.length];
     });
 
     // False walls. Each one goes on a gap that is the only way (on foot)
@@ -817,24 +855,29 @@ KIDS_JS = r"""
              !g.fake[g.key(e[0], e[1])] && !tooClose(e);
     }
     if (useFakes) {
-      // One on the way to FINISH that you can't do without
+      // On the way to FINISH, ones you can't do without (2 in a big maze)
       var run0 = g.walk(start, true), route = [];
       for (var p2 = finish; p2 !== -1; p2 = run0.prev[p2]) route.unshift(p2);
       var steps = route.slice(1).map(function (c, i) { return [route[i], c]; });
-      var needed = shuffled(steps, rng).some(function (e) {
+      var mustHave = N >= 250 ? 2 : 1;
+      shuffled(steps, rng).some(function (e) {
+        if (fakes.length >= mustHave) return true;
         if (!g.adjacent(e[0], e[1]) || !usable(e)) return false;   // a jump, or a bad spot
         var rm = room(e);
         if (!rm || rm.size < 3) return false;
-        var k2 = g.key(e[0], e[1]);
-        g.fake[k2] = true;
-        if (g.walk(start, true, true).dist[finish] < 0) { fakes.push(e); return true; }
-        delete g.fake[k2];
+        g.setOpen(e[0], e[1], 0);                                  // is there any way round it?
+        var needed = g.walk(start, true).dist[finish] < 0;
+        g.setOpen(e[0], e[1], 1);
+        if (!needed) return false;
+        g.fake[g.key(e[0], e[1])] = true;
+        fakes.push(e);
         return false;
       });
-      if (!needed) return null;
+      if (!fakes.length) return null;
 
-      // 2 or 3 more that lead into rooms with no START or FINISH in them
-      var want = fakes.length + 2 + randInt(rng, 2), gaps = [];
+      // More that lead into rooms with no START or FINISH in them
+      var extra = N >= 250 ? 3 + randInt(rng, 3) : 2 + randInt(rng, 2);
+      var want = fakes.length + extra, gaps = [];
       for (var x = 0; x < N; x++) {
         g.nbrs(x).forEach(function (y) { if (y > x && g.isOpen(x, y)) gaps.push([x, y]); });
       }
@@ -871,7 +914,8 @@ KIDS_JS = r"""
 
   function makeMaze(R, C, rng) {
     var best = null, g, i;
-    for (i = 0; i < 300; i++) {
+    var tries = Math.max(40, Math.round(300 * 126 / (R * C)));   // fewer for a big maze
+    for (i = 0; i < tries; i++) {
       g = mazeAttempt(R, C, rng, true);
       if (!g) continue;
       if (!best || (g.good && !best.good) || (g.good === best.good && g.score > best.score)) best = g;
@@ -922,10 +966,10 @@ KIDS_JS = r"""
 
     for (var i = 0; i < g.N; i++) {
       if (g.partner[i] < 0) continue;
-      out += '<circle cx="' + cx(i) + '" cy="' + cy(i) + '" r="8" fill="#ffffff" stroke="' +
-        MAZE_GREEN + '" stroke-width="2"/>' +
-        '<text class="maze-num" x="' + cx(i) + '" y="' + r1(cy(i) + 0.5) +
-        '" text-anchor="middle" dominant-baseline="central">' + g.num[i] + '</text>';
+      out += '<circle cx="' + cx(i) + '" cy="' + cy(i) + '" r="8.2" fill="#ffffff" stroke="' +
+        MAZE_GREEN + '" stroke-width="1.8"/>' +
+        '<path transform="translate(' + r1(cx(i) - 5.25) + ' ' + r1(cy(i) - 5.25) + ') scale(0.525)" ' +
+        'fill="' + MAZE_GREEN + '" d="' + PAD_SHAPES[g.sym[i]] + '"/>';
     }
 
     function label(cell, text, ty) {
@@ -951,14 +995,12 @@ KIDS_JS = r"""
       var answer = document.getElementById('kids-answer');
       if (answer) answer.textContent = ref;
     },
-    picture: placeholder('Hidden picture',
-      'Number clues around a grid. Shade the right squares to find the picture.'),
     words: placeholder('Word search',
       'A letter grid with a word bank underneath.'),
     maze: function (body, rng) {
       // As many quarter-inch squares as fit the box
-      var C = Math.max(8, Math.min(16, Math.floor((body.clientWidth - 4) / CELL)));
-      var R = Math.max(6, Math.min(12, Math.floor((body.clientHeight - 34) / CELL)));
+      var C = Math.max(8, Math.min(18, Math.floor((body.clientWidth - 4) / CELL)));
+      var R = Math.max(6, Math.min(30, Math.floor((body.clientHeight - 34) / CELL)));
       body.innerHTML = drawMaze(makeMaze(R, C, rng));
     },
     draw: placeholder('Draw it',
@@ -1079,9 +1121,10 @@ SHEET_WHEEL = (
 MAZE_RULES = (
     '<div class="maze-rules">'
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
-    '<circle cx="10" cy="10" r="8" fill="#ffffff" stroke="#15803d" stroke-width="2"/>'
-    '<text class="maze-num" x="10" y="10.5" text-anchor="middle" dominant-baseline="central">1</text>'
-    "</svg>Same number? Hop across!</span>"
+    '<circle cx="10" cy="10" r="8.2" fill="#ffffff" stroke="#15803d" stroke-width="1.8"/>'
+    '<path transform="translate(4.75 4.75) scale(0.525)" fill="#15803d" '
+    'd="M10 2.4L12.1 8L18 8.2L13.3 11.9L14.9 17.6L10 14.3L5.1 17.6L6.7 11.9L2 8.2L7.9 8Z"/>'
+    "</svg>Same picture? Hop across!</span>"
     '<span><svg viewBox="0 0 20 20" aria-hidden="true">'
     '<path d="M0.5 10H4M16 10H19.5" stroke="#0a0a0a" stroke-width="2"/>'
     '<path d="M6.4 10H13.6" stroke="#0a0a0a" stroke-width="2.3" stroke-linecap="round" stroke-dasharray="0 2.4"/>'
@@ -1136,7 +1179,6 @@ def render_kids_sheet(verses: list[str], events) -> str:
         "</header>\n"
         f'{_act("verse", "Look it up", "Crack the code, then find the verse in a Bible.")}\n'
         '<div class="sh-grid">\n'
-        f'{_act("picture", "Hidden picture")}\n'
         f'{_act("words", "Word search")}\n'
         f'{_act("maze", "Maze", note_html=MAZE_RULES)}\n'
         f'{_act("draw", "Draw it")}\n'
