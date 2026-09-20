@@ -130,6 +130,7 @@ import urllib.parse
 from kids import render_kids_sheet
 from who import WHO_CSS, parse_who, render_who
 from poetry import POETRY_CSS, parse_poems, render_poetry
+from prayer import PRAYER_CSS, parse_prayers, render_prayers
 from html import escape
 from pathlib import Path
 
@@ -326,6 +327,8 @@ def section_ready(slug: str) -> bool:
         return parse_who() is not None
     if slug == "poetry":
         return parse_poems() is not None
+    if slug == "prayer-list":
+        return parse_prayers(parse_event_date) is not None
     if slug == "events":
         return EVENTS_PATH.exists()
     return slug in READY_SECTIONS
@@ -1444,6 +1447,7 @@ html.dark .player { -webkit-text-stroke-color: #000000; }
 """
 CSS += WHO_CSS
 CSS += POETRY_CSS
+CSS += PRAYER_CSS
 
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
@@ -2229,6 +2233,19 @@ def render_poetry_page(key: str) -> str:
     return page("Poetry — Grace House", body, key)
 
 
+def render_prayer_page(key: str) -> str:
+    """Prayer list, built in prayer.py from prayer.txt."""
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="." class="back-tag">← HOME</a>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f'<div class="title-tag"><h1>{escape(section_title("prayer-list").upper())}</h1></div>\n'
+        f"{render_prayers(parse_prayers(parse_event_date))}"
+    )
+    return page("Prayer List — Grace House", body, key)
+
+
 def render_blank() -> str:
     return (
         "<!DOCTYPE html>\n"
@@ -2344,6 +2361,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return 
         if inner == "/poetry" and section_ready("poetry"):
             self._send(render_poetry_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
+            return
+        if inner == "/prayer-list" and section_ready("prayer-list"):
+            self._send(render_prayer_page(key).encode("utf-8"),
                        "text/html; charset=utf-8")
             return
 
