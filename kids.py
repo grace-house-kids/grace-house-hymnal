@@ -31,9 +31,11 @@ Where things come from:
     Maze         a fresh maze on every shuffle, walled into 2 or 3 parts
                  joined only by green numbered jump circles, plus one
                  pair that jumps into a sealed-off dead end, and 3 to 6
-                 red one-way arrows. Each one is checked before it's
+                 red one-way arrows, only ever in straight corridors, all
+                 over a faint grid. Each one is checked before it's
                  drawn: solvable, needs a jump, no pair joins places you
-                 could walk between, and an arrow blocks a shortcut. The two rules sit beside the MAZE label.
+                 could walk between, and an arrow blocks a shortcut.
+                 The two rules sit beside the MAZE label.
     Next up      the first event in events.txt that's today or later.
                  Worked out in the browser, so it stays current by itself.
 
@@ -593,7 +595,7 @@ KIDS_JS = r"""
           one-way arrows.
        5. Check it: it must be solvable, it must need the jump circles,
           and at least one arrow must block a shortcut.
-     About 200 tries per shuffle; the best one gets drawn. */
+     About 300 tries per shuffle; the best one gets drawn. */
   var CELL = 22;                       // one square, in drawing units (about 1/4 inch)
   var MAZE_RED = '#e0241b', MAZE_GREEN = '#15803d';
 
@@ -785,8 +787,18 @@ KIDS_JS = r"""
     });
 
     // One-way arrows: 3 to 5 at random (plus maybe one more on purpose), on
-    // open gaps, never touching START, FINISH or a jump circle, and spread
-    // out so they don't bunch up in one corner
+    // open gaps in straight corridors, never touching START, FINISH or a
+    // jump circle, and spread out so they don't bunch up in one corner
+    // An arrow only goes between two squares that are both plain straight
+    // corridor: open on exactly two opposite sides, one of them the arrow's
+    // own gap. Then any route through that stretch has to cross the arrow,
+    // and there's no doubt about what it blocks.
+    function straight(id, other) {
+      var opposite = 2 * id - other;   // the square on the far side
+      var open = g.nbrs(id).filter(function (n) { return g.isOpen(id, n); });
+      return open.length === 2 && open.indexOf(other) !== -1 && open.indexOf(opposite) !== -1;
+    }
+    function inCorridor(e) { return straight(e[0], e[1]) && straight(e[1], e[0]); }
     function crowded(e1, e2) {       // arrows stay at least two squares apart
       return e1.some(function (a) {
         return e2.some(function (b) {
@@ -801,6 +813,7 @@ KIDS_JS = r"""
           if (y < x || !g.isOpen(x, y)) return;
           if (x === start || y === start || x === finish || y === finish) return;
           if (g.partner[x] >= 0 || g.partner[y] >= 0) return;
+          if (!inCorridor([x, y])) return;
           gaps.push([x, y]);
         });
       }
@@ -820,6 +833,7 @@ KIDS_JS = r"""
         var steps = route.slice(1).map(function (c, i) { return [route[i], c]; });
         shuffled(steps, rng).some(function (e) {
           if (!g.adjacent(e[0], e[1])) return false;            // that step was a jump
+          if (!inCorridor(e)) return false;
           if (e.some(function (c) { return c === start || c === finish || g.partner[c] >= 0; })) return false;
           if (taken.some(function (o) { return crowded(o, e); })) return false;
           var k2 = g.key(e[0], e[1]);
@@ -854,7 +868,7 @@ KIDS_JS = r"""
 
   function makeMaze(R, C, rng) {
     var best = null, g, i;
-    for (i = 0; i < 200; i++) {
+    for (i = 0; i < 300; i++) {
       g = mazeAttempt(R, C, rng, true);
       if (!g) continue;
       if (!best || (g.good && !best.good) || (g.good === best.good && g.score > best.score)) best = g;
@@ -884,8 +898,14 @@ KIDS_JS = r"""
       if (c === C - 1) seg(x + CELL, y, x + CELL, y + CELL);
       if (r === R - 1 && id !== g.finish) seg(x, y + CELL, x + CELL, y + CELL);
     }
+    // A faint grid under everything, so it's clear each arrow sits on
+    // the line between two squares
+    var grid = '';
+    for (var gc = 1; gc < C; gc++) grid += 'M' + (ox + gc * CELL) + ' ' + oy + 'V' + (oy + H);
+    for (var gr = 1; gr < R; gr++) grid += 'M' + ox + ' ' + (oy + gr * CELL) + 'H' + (ox + W);
     var out = '<svg class="maze-svg" viewBox="0 0 ' + vw + ' ' + vh + '" ' +
       'preserveAspectRatio="xMidYMid meet" role="img" aria-label="Maze">' +
+      '<path d="' + grid + '" fill="none" stroke="#d6d6d6" stroke-width="0.8"/>' +
       '<path d="' + d + '" fill="none" stroke="#0a0a0a" stroke-width="2" stroke-linecap="square"/>';
 
     Object.keys(g.arrow).forEach(function (k) {
