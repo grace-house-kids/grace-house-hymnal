@@ -128,6 +128,7 @@ import socketserver
 import sys
 import urllib.parse
 from kids import render_kids_sheet
+from who import WHO_CSS, parse_who, render_who
 from html import escape
 from pathlib import Path
 
@@ -320,6 +321,8 @@ READY_SECTIONS = {"zine", "hymnal", "kids", "events"}
 def section_ready(slug: str) -> bool:
     if slug == "zine":
         return parse_zine() is not None
+    if slug == "who-we-are":
+        return parse_who() is not None
     if slug == "events":
         return EVENTS_PATH.exists()
     return slug in READY_SECTIONS
@@ -1436,6 +1439,8 @@ html.dark .player { -webkit-text-stroke-color: #000000; }
   }
 }
 """
+CSS += WHO_CSS
+
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
 # replaces the O in HOUSE.
@@ -2194,6 +2199,18 @@ def render_kids_page(key: str) -> str:
     return page("Kids — Grace House", body, key)
 
 
+def render_who_page(key: str) -> str:
+    """Who We Are. The middle is built in who.py from who-we-are.txt."""
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="." class="back-tag">← HOME</a>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f'<div class="title-tag"><h1>{escape(section_title("who-we-are").upper())}</h1></div>\n'
+        f"{render_who(parse_who())}"
+    )
+    return page("Who We Are — Grace House", body, key)
+
 
 def render_blank() -> str:
     return (
@@ -2304,6 +2321,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(render_events_page(key).encode("utf-8"),
                        "text/html; charset=utf-8")
             return
+        if inner == "/who-we-are" and section_ready("who-we-are"):
+            self._send(render_who_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
+            return        
         # /hymn/N (public) and /musician/hymn/N (musician mirror) share
         # everything except the show_chords flag and their link prefixes.
         m = re.match(r"^(/musician)?/hymn/(\d+)$", inner)
