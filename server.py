@@ -139,6 +139,8 @@ ZINE_PATH = HERE / "zine.txt"
 QUOTE_PATH = HERE / "quote.txt"
 VERSES_PATH = HERE / "verses.txt"
 EVENTS_PATH = HERE / "events.txt"
+WORDS_PATH = HERE / "words.txt"
+PROMPTS_PATH = HERE / "prompts.txt"
 DEFAULT_PORT = 8000
 
 # Auto-scroll speed for songs with no [Speed:X] line. On screen, speed 1
@@ -311,7 +313,7 @@ SECTIONS = [
     ("poetry",      "Poetry",         "Ramblings pointed at grace"),
     ("tracts",     "Tracts",          "Free to download"),
     ("resources",    "Resources",         "Gospel prints and more"),    
-    ("kids",       "Kids Activities", "Word searches, mazes & coloring"),
+    ("kids",       "Kids Activities", "Mazes, secret codes & word searches"),
 ]
 READY_SECTIONS = {"zine", "hymnal", "kids", "events"}
 
@@ -2175,18 +2177,23 @@ def render_events_page(key: str) -> str:
     )
     return page("Events — Grace House", body, key)
 
+
 def render_kids_page(key: str) -> str:
     """Kids activity sheet. The sheet itself is built in kids.py."""
     events, _problems = parse_events()
+    words = WORDS_PATH.read_text(encoding="utf-8") if WORDS_PATH.exists() else ""
+    prompts = PROMPTS_PATH.read_text(encoding="utf-8") if PROMPTS_PATH.exists() else ""
     body = (
         '<div class="hymn-nav-top">'
         '<a href="." class="back-tag">← HOME</a>'
         "</div>\n"
         f"{BRAND_LOGO}\n"
         f'<div class="title-tag"><h1>{escape(section_title("kids").upper())}</h1></div>\n'
-        f"{render_kids_sheet(load_verses(), events)}"
+        f"{render_kids_sheet(load_verses(), events, words, prompts)}"
     )
     return page("Kids — Grace House", body, key)
+
+
 
 def render_blank() -> str:
     return (
