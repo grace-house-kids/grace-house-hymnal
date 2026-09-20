@@ -219,6 +219,19 @@ def build() -> None:
         for level, msg in prayer_notes(parse_prayers(server.parse_event_date)):
             print(f"::{level}::prayer.txt: {msg}" if on_github else f"  ! prayer.txt: {msg}")
 
+    # Letters — /{key}/letters/index.html plus a page per letter.
+    if server.section_ready("letters"):
+        page_out(f"{key}/letters/index.html", server.render_letters_page(key), key, 1)
+        print("Letters:")
+        for slug, link, _title, _date, _body in parse_letters():
+            page_out(f"{key}/letters/{slug}/index.html",
+                     server.render_letter_page(key, slug), key, 2)
+            print(f"  {link}  →  letters/{slug}/")
+    # ↑↑↑ new block ends here ↑↑↑
+
+    # "Coming soon" for every front-page section without a real page yet.
+    print("Sections:")
+    
     # "Coming soon" for every front-page section without a real page yet.
     print("Sections:")
     for slug, title, _sub in server.SECTIONS:
