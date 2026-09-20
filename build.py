@@ -50,6 +50,7 @@ from pathlib import Path
 import server
 from prayer import parse_prayers, prayer_notes
 from letters import parse_letters
+from cookbook import parse_recipes, cookbook_notes
 
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "dist"
@@ -220,6 +221,21 @@ def build() -> None:
         for level, msg in prayer_notes(parse_prayers(server.parse_event_date)):
             print(f"::{level}::prayer.txt: {msg}" if on_github else f"  ! prayer.txt: {msg}")
 
+    # Community Cookbook — /{key}/cookbook/index.html plus a page per
+    # recipe, all from cookbook.txt.
+    if server.section_ready("cookbook"):
+        recipes = parse_recipes()
+        page_out(f"{key}/cookbook/index.html", server.render_cookbook_page(key), key, 1)
+        print(f"Cookbook: {len(recipes)} recipes")
+        for r in recipes:
+            page_out(f"{key}/cookbook/{r['n']}/index.html",
+                     server.render_recipe_page(r["n"], key), key, 2)
+            print(f"  #{r['n']:>3}  {r['label']}  ({r['icon']})")
+        on_github = os.environ.get("GITHUB_ACTIONS") == "true"
+        for level, msg in cookbook_notes(recipes):
+            print(f"::{level}::cookbook.txt: {msg}" if on_github
+                  else f"  ! cookbook.txt: {msg}")
+    
     # Letters — /{key}/letters/index.html plus a page per letter.
     if server.section_ready("letters"):
         page_out(f"{key}/letters/index.html", server.render_letters_page(key), key, 1)
