@@ -199,9 +199,8 @@ def parse_prompts(text: str) -> list[str]:
 
 KIDS_CSS = r"""
 /* The sheet is the printed page: 8.5 x 11 inches, with a half-inch
-   margin inside it. margin: 0 on the page also keeps the browser from
-   printing the web address (and the access key) on every sheet. */
-@page { size: letter; margin: 0; }
+   margin inside it. The page rule that goes with it (@page, margin 0)
+   is added by KIDS_JS, and only outside Safari; see "Printing" below. */
 
 /* Wide enough to show the sheet at full size on a computer. On a
    phone, KIDS_JS shrinks the preview to fit. */
@@ -662,12 +661,11 @@ main { max-width: calc(8.5in + 50px); }
    shorter than the paper, so rounding never spills a blank second page.
 
    Safari (and every iPhone/iPad browser, which all run on Safari's
-   engine): it ignores @page margins and adds its own, about 10 mm and a
-   bit more at the bottom. A full 8.5 x 11 sheet doesn't fit inside
-   those, so Safari shrinks it and shoves it up off the top of the
-   paper. KIDS_JS marks those browsers with html.webkit-print, and they
-   get only the part inside the border, 7.5 x 9.75 inches, centered;
-   Safari's own margins make the white edge. */
+   engine): given an @page margin rule, it prints everything shifted
+   about half an inch up, cutting off the top of the sheet. So KIDS_JS
+   never gives Safari that rule. Safari prints with its own margins
+   instead, like any ordinary page, and gets only the part of the sheet
+   inside the border, 7.5 x 9.75 inches, centered (html.webkit-print). */
 @media print {
   html, body { margin: 0 !important; padding: 0 !important; }
   main { max-width: none !important; margin: 0 !important; padding: 0 !important; }
@@ -696,10 +694,18 @@ KIDS_JS = r"""
   var wrap = document.getElementById('sheet-wrap');
 
   // Safari, and every iPhone/iPad browser (all built on Safari's engine),
-  // print with their own margins no matter what the page asks for, so
-  // they get a smaller printed sheet. See "Printing" in KIDS_CSS.
+  // shift the whole printout up if the page sets its own print margins,
+  // so they don't get that rule: they print with their own margins and
+  // a smaller sheet. Every other browser gets the edge-to-edge page, with
+  // the sheet's own border. margin: 0 there also keeps the browser from
+  // printing the web address (and the access key) on every sheet.
+  // See "Printing" in KIDS_CSS.
   if ((navigator.vendor || '').indexOf('Apple') === 0) {
     document.documentElement.classList.add('webkit-print');
+  } else {
+    var pageRule = document.createElement('style');
+    pageRule.textContent = '@page { size: letter; margin: 0; }';
+    document.head.appendChild(pageRule);
   }
 
   function read(attr) {
