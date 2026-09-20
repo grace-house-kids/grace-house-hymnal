@@ -303,6 +303,7 @@ def parse_hymn(path):
 SECTIONS = [
     ("zine",       "Sunday Zine",     "This week at Grace House"),
     ("hymnal",     "Hymnal",          "Songs we sing together"),
+    ("prayer-list", "Prayer List",     "Got a request or need the list?"),
     ("events",     "Events",          "What's coming up"),
     ("who-we-are", "Who We Are",      "What we believe"),
     ("letters",    "Letters",         "Past messages"),    
