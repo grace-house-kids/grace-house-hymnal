@@ -244,19 +244,29 @@ main { max-width: calc(8.5in + 50px); }
 /* ── The sheet ───────────────────────────────────────────── */
 .sheet-wrap { position: relative; overflow: hidden; }   /* KIDS_JS sets the height */
 .sheet {
+  position: relative;
   width: 8.5in;
   height: 11in;
-  padding: 0.5in;
   transform-origin: 0 0;
   background: #ffffff;
   color: #0a0a0a;
   box-shadow: inset 0 0 0 1.5px #0a0a0a, 6px 6px 0 #0a0a0a;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  row-gap: 0.16in;
   font-family: 'Special Elite', 'Courier New', monospace;
   -webkit-print-color-adjust: exact;   /* print the black label chips */
   print-color-adjust: exact;
+}
+/* Everything on the sheet, placed exactly half an inch in from each
+   edge. Not padding on the sheet: Safari drops a grid's top padding
+   when it prints, which pushed the whole sheet up off the paper. */
+.sheet-in {
+  position: absolute;
+  top: 0.5in;
+  right: 0.5in;
+  bottom: 0.5in;
+  left: 0.5in;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  row-gap: 0.16in;
 }
 
 /* White paper, not dotted beige, so no beige halo on the sheet's text
@@ -1657,6 +1667,7 @@ def render_kids_sheet(verses: list[str], events, words_text: str = "",
         '<div id="sheet-wrap" class="sheet-wrap">\n'
         f'<div id="sheet" class="sheet" data-verses="{verse_data}" data-events="{event_data}" '
         f'data-words="{word_data}" data-prompts="{prompt_data}">\n'
+        '<div class="sheet-in">\n'
         '<header class="sh-head">'
         '<div class="sh-brand">'
         '<span class="sh-sr">Grace House Kids</span>'
@@ -1675,6 +1686,7 @@ def render_kids_sheet(verses: list[str], events, words_text: str = "",
         '<h2 class="act-label">Next up</h2>'
         '<div id="sheet-event" class="ev-text"></div>'
         "</footer>\n"
+        "</div>\n"
         "</div>\n"
         "</div>\n"
         f"<script>{KIDS_JS}</script>"
