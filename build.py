@@ -2,9 +2,9 @@
 """Grace House — static site builder.
 
 Reads the same files server.py reads (hymns/, zine.txt, quote.txt,
-events.txt, who-we-are.txt) and writes a complete static site to ./dist
-that can be uploaded to any web host — GitHub Pages, Cloudflare Pages,
-Neocities, a USB stick, whatever.
+events.txt, who-we-are.txt, poems.txt, prayer.txt) and writes a complete
+static site to ./dist that can be uploaded to any web host — GitHub
+Pages, Cloudflare Pages, Neocities, a USB stick, whatever.
 
 Usage:
     python3 build.py
@@ -29,6 +29,8 @@ Output:
     dist/{key}/events/index.html         <- calendar + events (or "coming soon")
     dist/{key}/kids/index.html           <- printable kids activity sheet
     dist/{key}/who-we-are/index.html     <- welcome + how an evening goes
+    dist/{key}/poetry/index.html         <- the running chapbook
+    dist/{key}/prayer-list/index.html    <- this month's prayer requests
     dist/{key}/letters/index.html        <- "coming soon" pages for sections
     dist/{key}/tracts/index.html            that aren't built yet
     dist/{key}/qr/index.html             <- QR code for the front page
@@ -46,6 +48,7 @@ from pathlib import Path
 
 # Reuse everything from server.py — same rendering, same look.
 import server
+from prayer import parse_prayers, prayer_notes
 
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "dist"
@@ -205,6 +208,16 @@ def build() -> None:
     # Poetry — /{key}/poetry/index.html, from poems.txt.
     if server.section_ready("poetry"):
         page_out(f"{key}/poetry/index.html", server.render_poetry_page(key), key, 1)
+
+    # Prayer list — /{key}/prayer-list/index.html, from prayer.txt.
+    # Requests drop off a month after their date in the visitor's
+    # browser, so this page doesn't need a rebuild just to stay current.
+    # The build lists blocks that have dropped off, so you can delete them.
+    if server.section_ready("prayer-list"):
+        page_out(f"{key}/prayer-list/index.html", server.render_prayer_page(key), key, 1)
+        on_github = os.environ.get("GITHUB_ACTIONS") == "true"
+        for level, msg in prayer_notes(parse_prayers(server.parse_event_date)):
+            print(f"::{level}::prayer.txt: {msg}" if on_github else f"  ! prayer.txt: {msg}")
 
     # "Coming soon" for every front-page section without a real page yet.
     print("Sections:")
