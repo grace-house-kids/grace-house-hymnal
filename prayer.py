@@ -33,8 +33,9 @@ secret is set, the page gets an "Add a request" button. It starts the
 "Add prayer request" GitHub Action (.github/workflows/prayer.yml),
 which runs "python3 prayer.py add" to put the request at the top of
 prayer.txt under that day's date, saves it, and rebuilds the site. It's
-on the page a minute or two later. Without the secret (like on your own
-computer), there's no button.
+on the page a minute or two later. The phone that sent it shows it
+right away, marked "Adding", until the real one arrives. Without the
+secret (like on your own computer), there's no button.
 
 PRAYER_TOKEN is a fine-grained GitHub token that can do one thing:
 Actions (read and write) on this repo. It can't change files or see
@@ -368,7 +369,8 @@ def render_prayers(data, today: datetime.date | None = None) -> str:
     )
     script = PRAYER_JS.replace("__HOURS__", str(CHECK_HOURS)).replace("__NEW__", str(NEW_DAYS))
     if _token():
-        script += PRAYER_FORM_JS
+        script += (PRAYER_FORM_JS.replace("__MAX_TEXT__", str(MAX_TEXT))
+                                 .replace("__MAX_NAME__", str(MAX_NAME)))
     return ('<div class="pr-list" id="pr-list">\n' + "\n".join(parts)
             + f"\n</div>\n<script>{script}</script>")
 
@@ -398,7 +400,7 @@ PRAYER_JS = r"""
       days[i].hidden = gone;
       var tag = days[i].querySelector('.pr-new');
       if (tag) tag.hidden = gone || days[i].getAttribute('data-date') < newSince;
-      if (!gone) open += days[i].querySelectorAll('.pr-item').length;
+      if (!gone) open += days[i].querySelectorAll('.pr-item, .pr-pending').length;
     }
     var ans = root.querySelectorAll('.pr-done');
     for (i = 0; i < ans.length; i++) {
@@ -430,6 +432,7 @@ PRAYER_JS = r"""
     refresh();
   });
 
+  root.addEventListener('pr-changed', refresh);   // the form drew something in
   refresh();
   setInterval(refresh, 60 * 1000);
   document.addEventListener('visibilitychange', function () {
@@ -442,10 +445,17 @@ PRAYER_JS = r"""
 # The "Add a request" form. Starts the "Add prayer request" Action on
 # GitHub with the request, the name and the date on this phone. GitHub
 # answers 204 when the Action has been started.
+#
+# The request then takes a minute or two to reach the page, so the phone
+# that sent it draws it into the list straight away, marked "Adding",
+# and remembers it (localStorage, this phone only). Once the page loads
+# with the real one on it, the phone forgets its copy. If the real one
+# never shows up, the copy goes away after PENDING_LIFE.
 PRAYER_FORM_JS = r"""
 (function () {
   var box = document.getElementById('pr-add');
-  if (!box) return;
+  var root = document.getElementById('pr-list');
+  if (!box || !root) return;
   var token = box.getAttribute('data-t').split('').reverse().join('');
   var url = 'https://api.github.com/repos/' + box.getAttribute('data-repo') +
             '/actions/workflows/prayer.yml/dispatches';
@@ -456,11 +466,101 @@ PRAYER_FORM_JS = r"""
   var status = document.getElementById('pr-status');
   var text = document.getElementById('pr-f-text');
   var name = document.getElementById('pr-f-name');
+
+  var PENDING = 'gh-prayer-pending', PENDING_LIFE = 20 * 60 * 1000;
+  var DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
   function pad(n) { return (n < 10 ? '0' : '') + n; }
-  function today() {
-    var d = new Date();
-    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  function iso(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function fromIso(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  // One month after the date, like prayer.py's _ends.
+  function ends(d) {
+    var y = d.getFullYear(), m = d.getMonth() + 1;
+    return new Date(y, m, Math.min(d.getDate(), new Date(y, m + 1, 0).getDate()));
   }
+
+  // The same tidy-up the Action does (prayer.py request_line), so the
+  // copy shown here matches what lands on the list.
+  function tidy(s, max) {
+    return String(s || '').replace(/[\u0000-\u001f\u007f]/g, ' ')
+      .replace(/\s+/g, ' ').trim().slice(0, max).trim();
+  }
+  function cleanText(s) { return tidy(s, __MAX_TEXT__).replace(/^[\s+#\u2713\u2714]+/, '').trim(); }
+  function cleanName(s) { return tidy(s, __MAX_NAME__).replace(/[()]/g, '').trim(); }
+  // For spotting the real request on the page: letters and numbers only.
+  function norm(s) { return String(s).toLowerCase().replace(/[^0-9a-z\u00c0-\u024f]+/g, ''); }
+
+  function loadPending() { try { return JSON.parse(localStorage.getItem(PENDING)) || []; } catch (e) { return []; } }
+  function savePending(list) { try { localStorage.setItem(PENDING, JSON.stringify(list)); } catch (e) {} }
+
+  // How many real (built) requests on that day read the same.
+  function matches(p) {
+    var sec = root.querySelector('.pr-day[data-date="' + p.date + '"]:not(.pr-made)');
+    if (!sec) return 0;
+    var reqs = sec.querySelectorAll('.pr-item .pr-req'), n = 0;
+    for (var i = 0; i < reqs.length; i++) if (norm(reqs[i].textContent) === norm(p.text)) n++;
+    return n;
+  }
+
+  // A day heading for a date the page doesn't have yet, put in date
+  // order (newest first).
+  function makeDay(date) {
+    var d = fromIso(date), end = ends(d), last = new Date(end);
+    last.setDate(last.getDate() - 1);
+    var sec = document.createElement('section');
+    sec.className = 'pr-day pr-made';
+    sec.setAttribute('data-date', date);
+    sec.setAttribute('data-expires', iso(end));
+    sec.innerHTML = '<div class="pr-head"><h2 class="pr-date"></h2>' +
+      '<span class="count-tag pr-new" hidden>New</span><span class="pr-thru"></span></div>';
+    sec.querySelector('.pr-date').textContent = DAYS[d.getDay()] + ' ' + MON[d.getMonth()] + ' ' + d.getDate();
+    sec.querySelector('.pr-thru').textContent = 'through ' + MON[last.getMonth()] + ' ' + last.getDate();
+    var days = root.querySelectorAll('.pr-day'), before = null;
+    for (var i = 0; i < days.length; i++) {
+      if (days[i].getAttribute('data-date') < date) { before = days[i]; break; }
+    }
+    root.insertBefore(sec, before || document.getElementById('pr-answered') || document.getElementById('pr-none'));
+    return sec;
+  }
+
+  function makeItem(p) {
+    var el = document.createElement('div');
+    el.className = 'pr-pending';
+    el.setAttribute('data-pending', p.id);
+    el.innerHTML = '<span class="pr-check pr-wait" aria-hidden="true"></span>' +
+      '<span class="pr-text"><span class="pr-req"></span><span class="pr-who"></span>' +
+      '<span class="pr-adding">Adding. Only you can see this until the list updates.</span></span>';
+    el.querySelector('.pr-req').textContent = p.text;
+    var who = el.querySelector('.pr-who');
+    if (p.name) who.textContent = 'asked by ' + p.name;
+    else who.parentNode.removeChild(who);
+    return el;
+  }
+
+  // Draw this phone's waiting requests into the list. Drops any whose
+  // real copy has arrived, or that have waited too long.
+  function showPending() {
+    var i, old = root.querySelectorAll('.pr-pending');
+    for (i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+    var now = Date.now(), keep = [];
+    loadPending().forEach(function (p) {
+      if (!p || !p.text || !p.date || now - p.sent > PENDING_LIFE) return;
+      if (matches(p) > (p.before || 0)) return;
+      keep.push(p);
+      var sec = root.querySelector('.pr-day[data-date="' + p.date + '"]') || makeDay(p.date);
+      sec.appendChild(makeItem(p));
+    });
+    var made = root.querySelectorAll('.pr-made');
+    for (i = 0; i < made.length; i++) {
+      if (!made[i].querySelector('.pr-pending')) made[i].parentNode.removeChild(made[i]);
+    }
+    savePending(keep);
+    var ev;
+    try { ev = new Event('pr-changed'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('pr-changed', false, false); }
+    root.dispatchEvent(ev);
+  }
+
   function show(on) {
     form.hidden = !on;
     open.hidden = on;
@@ -472,7 +572,9 @@ PRAYER_FORM_JS = r"""
 
   form.onsubmit = function (e) {
     e.preventDefault();
-    if (!text.value.trim()) { text.focus(); return; }
+    var p = { id: String(Date.now()), text: cleanText(text.value), name: cleanName(name.value),
+              date: iso(new Date()), sent: Date.now() };
+    if (!p.text) { text.focus(); return; }
     send.disabled = true;
     send.textContent = 'Adding\u2026';
     status.textContent = '';
@@ -485,20 +587,41 @@ PRAYER_FORM_JS = r"""
       },
       body: JSON.stringify({
         ref: branch,
-        inputs: { text: text.value, name: name.value, date: today() }
+        inputs: { text: text.value, name: name.value, date: p.date }
       })
     }).then(function (r) {
-      if (!r.ok) throw new Error(String(r.status));
+      if (r.ok) return;
+      // Keep GitHub's reason ("Not Found", "Bad credentials"...) so the
+      // message says what went wrong.
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        var err = new Error((j && j.message) || '');
+        err.status = r.status;
+        throw err;
+      });
+    }).then(function () {
       text.value = '';            // the name stays, for the next one
       show(false);
-      status.textContent = 'Added. It will be on the list in a couple of minutes.';
-    }).catch(function () {
-      status.textContent = 'That didn\u2019t go through. Check your connection and tap Add request again.';
+      p.before = matches(p);      // same words already on that day (rare)
+      var list = loadPending();
+      list.push(p);
+      savePending(list);
+      showPending();
+      status.textContent = 'Added. Everyone else will see it in a couple of minutes.';
+      var el = root.querySelector('[data-pending="' + p.id + '"]');
+      if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }).catch(function (err) {
+      status.textContent = (err && err.status)
+        ? 'That didn\u2019t go through. GitHub said: ' + err.status +
+          (err.message ? ' ' + err.message : '') +
+          '. Please let whoever looks after the site know.'
+        : 'That didn\u2019t go through. Check your connection and tap Add request again.';
     }).then(function () {
       send.disabled = false;
       send.textContent = 'Add request';
     });
   };
+
+  showPending();
 })();
 """
 
@@ -569,7 +692,9 @@ PRAYER_CSS = r"""
   padding: 14px 2px;
 }
 .pr-item + .pr-item,
-.pr-done + .pr-done { border-top: 1.5px dashed rgba(10, 10, 10, 0.35); }
+.pr-done + .pr-done,
+.pr-item + .pr-pending,
+.pr-pending + .pr-pending { border-top: 1.5px dashed rgba(10, 10, 10, 0.35); }
 .pr-item:focus-visible { outline: 3px solid #f01a8b; outline-offset: 2px; }
 
 .pr-check {
@@ -615,6 +740,32 @@ PRAYER_CSS = r"""
   letter-spacing: 1px;
   text-transform: uppercase;
   color: #f01a8b;
+}
+
+/* A request this phone just sent, shown until the real one arrives.
+   Same shape as a request, with a slowly turning dashed circle. */
+.pr-pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 14px 2px;
+}
+.pr-check.pr-wait {
+  border-style: dashed;
+  border-color: #f01a8b;
+  animation: pr-turn 4s linear infinite;
+}
+@keyframes pr-turn { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .pr-check.pr-wait { animation: none; }
+}
+.pr-adding {
+  display: block;
+  margin-top: 6px;
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: 0.6;
 }
 
 .pr-day[hidden], .pr-answered[hidden], .pr-done[hidden], .pr-new[hidden] {
