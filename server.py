@@ -136,6 +136,7 @@ from letters import (LETTERS_CSS, parse_letters, find_letter,
 from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
                       render_recipe)
 from jerjer import JERJER_CSS, JERJER_IMAGES, load_critiques, render_jerjer
+from prayer import PRAYER_CSS, parse_prayers, render_prayers
 from html import escape
 from pathlib import Path
 
@@ -2224,6 +2225,7 @@ def render_events_page(key: str) -> str:
         '<div class="dash-rule"></div>'
         '<span class="hint">↓ details</span>'
         "</div>\n"
+        f"{render_event_form()}\n"
         f'<div class="ev-list">\n{day_html}\n</div>\n'
         f'<p class="ev-none" id="ev-none"{" hidden" if events else ""}>'
         "Nothing on the calendar right now. Check back soon.</p>\n"
