@@ -87,6 +87,7 @@ from __future__ import annotations
 import re
 from html import escape
 from pathlib import Path
+from recipeform import render_recipe_form
 
 HERE = Path(__file__).resolve().parent
 COOKBOOK_PATH = HERE / "cookbook.txt"
@@ -767,6 +768,7 @@ def render_cookbook(recipes: list[dict] | None) -> str:
         '<div class="dash-rule"></div>'
         '<span class="hint">↓ tap one</span>'
         "</div>\n"
+        f"{render_recipe_form()}\n"
         f'<ul class="rc-list">\n' + "\n".join(items) + "\n</ul>"
     )
 
