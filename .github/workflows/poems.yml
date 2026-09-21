@@ -1,0 +1,62 @@
+# .github/workflows/poems.yml
+#
+# Started by the "Add a poem" form on the Poetry page. Adds the poem to
+# poems.txt (python3 poemform.py add), saves it to main, then starts
+# "Build and deploy" so it shows up on the site.
+#
+# Uses the same PRAYER_TOKEN as the prayer form (see poemform.py). If
+# the form ever stops working, check the Actions tab for a red run of
+# this workflow.
+#
+# The whole form arrives as one box of JSON, through env: below, never
+# pasted into the commands, so nothing anyone types can run as a command.
+
+name: Add poem
+
+on:
+  workflow_dispatch:
+    inputs:
+      poem:
+        description: The form's boxes, as JSON
+        required: true
+        type: string
+
+permissions:
+  contents: write   # save poems.txt
+  actions: write    # start Build and deploy
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add the poem to poems.txt
+        env:
+          PM_POEM: ${{ inputs.poem }}
+        run: |
+          git config user.name "Grace House website"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # If two people send at the same moment, one save gets turned
+          # away. Start over from the newest poems.txt and try again,
+          # after a random pause so they don't collide again.
+          for try in 1 2 3 4 5 6 7 8 9 10; do
+            git fetch --quiet origin main
+            git reset --quiet --hard origin/main
+            python3 poemform.py add || exit 1
+            git add poems.txt
+            git commit --quiet -m "Poem from the website"
+            if git push --quiet origin HEAD:main; then exit 0; fi
+            echo "poems.txt changed at the same moment; trying again."
+            sleep $((RANDOM % 6 + try))
+          done
+          echo "::error::Couldn't save the poem after 10 tries."
+          exit 1
+
+      # Saves made by an Action don't set off other Actions, so start the
+      # site build by hand. It picks up everything saved so far.
+      - name: Rebuild the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main
