@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """JerJer — the floating-head critic on the musician song pages.
 
-He sits in the bottom-right corner, just above the control bar. Every
-so often he flaps his mouth and a speech bubble pops up with a random
-line from critique.txt. Tap him (or his bubble) and he's gone for the
-rest of that song; the next song brings him back. Press 9 on a
-keyboard and he says something right away (and comes back if he was
-tapped away). He never shows in
-dark mode or when a page is printed, and never on the public hymnal.
+When a song opens he's nowhere to be seen. Then, out of nowhere, he
+pops up in the bottom-right corner (just above the control bar) with
+his first critique, and he stays put from then on, flapping his mouth
+with a new line from critique.txt every so often. Tap him (or his
+bubble) and he's gone for the rest of that song; the next song starts
+it all over. Press 9 on a keyboard and he pops up and says something
+right away, even if he was tapped away. He never shows in dark mode or
+when a page is printed, and never on the public hymnal.
 
 critique.txt: one critique per line, next to server.py. Blank lines and
 lines starting with # are ignored. No critique.txt, or an empty one,
@@ -17,8 +18,8 @@ Pictures: JerJer.png (mouth shut) and JerJerSpeaks.png (mouth open),
 next to server.py. They're stacked on top of each other, so they need
 to be the same size. If either one is missing, he just doesn't show.
 
-Timing lives at the top of JERJER_JS: FIRST is how long he waits
-before his first critique on a song, GAP is how long between critiques
+Timing lives at the top of JERJER_JS: FIRST is how long he stays
+hidden before popping up with his first critique on a song, GAP is how long between critiques
 after that (both in seconds, a random pick between the two numbers).
 """
 from __future__ import annotations
@@ -184,7 +185,7 @@ JERJER_JS = r"""
   try { lines = JSON.parse(jj.getAttribute('data-critiques')) || []; } catch (e) {}
   if (!lines.length) return;
 
-  var FIRST = [8, 18];      // seconds before his first critique on a song
+  var FIRST = [30, 60];    // seconds he stays hidden before his first critique
   var GAP = [35, 80];       // seconds between critiques after that
 
   var bubble = document.getElementById('jj-bubble');
@@ -224,7 +225,15 @@ JERJER_JS = r"""
     later(function () { flap(n - 1); }, 0.11 + Math.random() * 0.1);
   }
 
+  // If he's out of sight, he pops into existence first, then talks.
   function speak() {
+    if (gone) return;
+    if (!jj.hidden) { talk(); return; }
+    jj.hidden = false;
+    later(talk, 0.35);
+  }
+
+  function talk() {
     if (gone) return;
     var line = pick();
     bubble.textContent = line;
@@ -253,9 +262,11 @@ JERJER_JS = r"""
     timers = [];
     clearTimeout(hideTimer);
     gone = false;
-    jj.classList.remove('leaving');
-    jj.hidden = false;
-    void jj.offsetWidth;            // so the bubble pops in fresh
+    if (jj.classList.contains('leaving')) {   // caught him on his way out
+      jj.classList.remove('leaving');
+      jj.hidden = true;
+    }
+    void jj.offsetWidth;            // so he (and his bubble) pop in fresh
     speak();
   });
 
@@ -268,8 +279,7 @@ JERJER_JS = r"""
 
   place();
   window.addEventListener('resize', place);
-  jj.hidden = false;
-  later(speak, between(FIRST));
+  later(speak, between(FIRST));     // hidden until then
 })();
 """
 
