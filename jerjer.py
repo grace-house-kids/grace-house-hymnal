@@ -79,7 +79,7 @@ JERJER_CSS = r"""
   pointer-events: auto;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-  filter: drop-shadow(3px 3px 0 #0a0a0a);
+# filter: drop-shadow(3px 3px 0 #0a0a0a);
   transform-origin: 50% 85%;
   transition: transform 0.2s ease-out;
 }
