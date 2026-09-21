@@ -1,0 +1,79 @@
+# .github/workflows/events.yml
+#
+# Started by the "Add an event" form on the Events page. Adds the event
+# to events.txt in date order (python3 eventform.py add), saves it to
+# main, then starts "Build and deploy" so it shows up on the site.
+#
+# Uses the same PRAYER_TOKEN as the prayer form (see eventform.py). If
+# the form ever stops working, check the Actions tab for a red run of
+# this workflow.
+#
+# What people type comes in through env: below, never pasted into the
+# commands, so nothing anyone types can run as a command.
+
+name: Add event
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: The date, like 2026-09-27
+        required: true
+        type: string
+      time:
+        description: The time, like 19:30 (optional)
+        required: false
+        type: string
+        default: ''
+      title:
+        description: What's happening
+        required: true
+        type: string
+      details:
+        description: Details (optional)
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write   # save events.txt
+  actions: write    # start Build and deploy
+
+jobs:
+  add:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Add the event to events.txt
+        env:
+          EV_DATE: ${{ inputs.date }}
+          EV_TIME: ${{ inputs.time }}
+          EV_TITLE: ${{ inputs.title }}
+          EV_DETAILS: ${{ inputs.details }}
+        run: |
+          git config user.name "Grace House website"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # If two people send at the same moment, one save gets turned
+          # away. Start over from the newest events.txt and try again,
+          # after a random pause so they don't collide again.
+          for try in 1 2 3 4 5 6 7 8 9 10; do
+            git fetch --quiet origin main
+            git reset --quiet --hard origin/main
+            python3 eventform.py add || exit 1
+            git add events.txt
+            git commit --quiet -m "Event from the website"
+            if git push --quiet origin HEAD:main; then exit 0; fi
+            echo "events.txt changed at the same moment; trying again."
+            sleep $((RANDOM % 6 + try))
+          done
+          echo "::error::Couldn't save the event after 10 tries."
+          exit 1
+
+      # Saves made by an Action don't set off other Actions, so start the
+      # site build by hand. It picks up everything saved so far.
+      - name: Rebuild the site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --repo "${{ github.repository }}" --ref main
