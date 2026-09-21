@@ -16,10 +16,6 @@
 # Past events hide themselves, so you can leave them here or
 # delete them whenever. Lines starting with # (like these) are ignored.
 
-September 23 2026
-Test
-Info about this
-
 October 24 2026
 Fall Night at Jeremiah & Julie's
 A Halloween alternative for the whole family.
