@@ -1315,7 +1315,17 @@ html.dark .p-theme .t-moon { opacity: 1; color: #f01a8b; }
   -webkit-text-stroke-color: transparent !important;
   paint-order: normal !important;
 }
-
+.v-body .chord,
+.v-label,
+ol.toc .num,
+.song-num,
+.notes-label,
+main a:not([class]) {
+  -webkit-text-stroke-width: 0 !important;
+  -webkit-text-stroke-color: transparent !important;
+  paint-order: normal !important;
+  position: relative;
+}
 /* ────────────────────────────────────────────────────────────
    DARK MODE (musician pages only) — black page, white text,
    pink chords and labels stay pink.
