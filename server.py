@@ -136,7 +136,7 @@ from letters import (LETTERS_CSS, parse_letters, find_letter,
 from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
                       render_recipe)
 from jerjer import JERJER_CSS, JERJER_IMAGES, load_critiques, render_jerjer
-from prayer import PRAYER_CSS, parse_prayers, render_prayers
+from eventform import render_event_form
 from html import escape
 from pathlib import Path
 
