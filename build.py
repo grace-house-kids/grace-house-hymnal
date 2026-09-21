@@ -51,6 +51,7 @@ import server
 from prayer import parse_prayers, prayer_notes
 from letters import parse_letters
 from cookbook import parse_recipes, cookbook_notes
+from jerjer import JERJER_IMAGES
 
 HERE = Path(__file__).resolve().parent
 DIST = HERE / "dist"
@@ -150,7 +151,10 @@ def build() -> None:
 
     # Stylesheet — under the key prefix so <base href="/{key}/"> finds it.
     write(f"{key}/style.css", server.CSS)
-
+    # JerJer's two faces, for the musician song pages.
+    for name, path in JERJER_IMAGES.items():
+        if path.exists():
+            write(f"{key}/{name}", path.read_bytes())
     # Front page — /{key}/index.html
     page_out(f"{key}/index.html", server.render_home(key), key, 0)
 
