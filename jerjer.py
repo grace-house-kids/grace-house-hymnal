@@ -4,7 +4,9 @@
 He sits in the bottom-right corner, just above the control bar. Every
 so often he flaps his mouth and a speech bubble pops up with a random
 line from critique.txt. Tap him (or his bubble) and he's gone for the
-rest of that song; the next song brings him back. He never shows in
+rest of that song; the next song brings him back. Press 9 on a
+keyboard and he says something right away (and comes back if he was
+tapped away). He never shows in
 dark mode or when a page is printed, and never on the public hymnal.
 
 critique.txt: one critique per line, next to server.py. Blank lines and
@@ -79,7 +81,6 @@ JERJER_CSS = r"""
   pointer-events: auto;
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
-# filter: drop-shadow(3px 3px 0 #0a0a0a);
   transform-origin: 50% 85%;
   transition: transform 0.2s ease-out;
 }
@@ -188,7 +189,7 @@ JERJER_JS = r"""
 
   var bubble = document.getElementById('jj-bubble');
   var player = document.getElementById('player');
-  var timers = [], gone = false;
+  var timers = [], gone = false, broken = false, hideTimer = 0;
 
   function later(fn, sec) { timers.push(setTimeout(fn, sec * 1000)); }
   function between(r) { return r[0] + Math.random() * (r[1] - r[0]); }
@@ -242,14 +243,27 @@ JERJER_JS = r"""
     if (gone) return;
     quit();
     jj.classList.add('leaving');
-    setTimeout(function () { jj.hidden = true; }, 300);
+    hideTimer = setTimeout(function () { jj.hidden = true; }, 300);
+  });
+
+  // Press 9 and he says something right now, even if he was tapped away.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== '9' || e.repeat || e.ctrlKey || e.metaKey || e.altKey || broken) return;
+    quit();
+    timers = [];
+    clearTimeout(hideTimer);
+    gone = false;
+    jj.classList.remove('leaving');
+    jj.hidden = false;
+    void jj.offsetWidth;            // so the bubble pops in fresh
+    speak();
   });
 
   // A missing picture means no JerJer, rather than a broken-image box.
   var imgs = jj.getElementsByTagName('img');
   for (var i = 0; i < imgs.length; i++) {
-    if (imgs[i].complete && !imgs[i].naturalWidth) { quit(); return; }
-    imgs[i].addEventListener('error', function () { quit(); jj.hidden = true; });
+    if (imgs[i].complete && !imgs[i].naturalWidth) { broken = true; quit(); return; }
+    imgs[i].addEventListener('error', function () { broken = true; quit(); jj.hidden = true; });
   }
 
   place();
