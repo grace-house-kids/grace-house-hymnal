@@ -6,7 +6,16 @@
 #
 # The access key comes from the HYMNAL_KEY repository secret
 # (Settings → Secrets and variables → Actions). It's never stored in
-# the repo and never printed in the build log.
+# the repo and never printed in the build log. PRAYER_TOKEN (see
+# prayer.py) goes into the prayer page's Add a request button.
+#
+# The built site travels from the build job to the deploy job as a
+# download attached to the run. On a public repo anyone signed in to
+# GitHub can download it, and it has the real key in its folder names,
+# so the last step deletes it once the site is published.
+#
+# Also started by "Add prayer request" (prayer.yml) after it saves a
+# new request.
 #
 # You should never need to touch this file. If you do, GitHub will
 # not let you break anything permanent — old deploys stay live until
@@ -23,6 +32,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: write     # lets the last step delete the built copy from the run
 
 concurrency:
   group: pages
@@ -40,6 +50,7 @@ jobs:
         run: python build.py
         env:
           HYMNAL_KEY: ${{ secrets.HYMNAL_KEY }}
+          PRAYER_TOKEN: ${{ secrets.PRAYER_TOKEN }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
@@ -53,3 +64,11 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: Delete the built copy from this run
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for id in $(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts" --jq '.artifacts[].id'); do
+            gh api -X DELETE "repos/${{ github.repository }}/actions/artifacts/$id"
+          done
