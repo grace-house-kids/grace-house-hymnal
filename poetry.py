@@ -25,12 +25,17 @@ Poems show in the order they're in the file, so put new ones at the top
 if you want the newest first. With two or more poems, a contents list
 appears at the top and each title jumps to its poem. If the file is
 missing or has no poems yet, the front page shows "Soon".
+
+People can add poems from the page too: see poemform.py. Those go at
+the top of poems.txt.
 """
 from __future__ import annotations
 
 import re
 from html import escape
 from pathlib import Path
+
+from poemform import render_poem_form
 
 POEMS_PATH = Path(__file__).resolve().parent / "poems.txt"
 
@@ -116,7 +121,8 @@ def _anchor(title: str, used: set[str]) -> str:
 
 
 def render_poetry(poems) -> str:
-    """The page's middle: count strip, contents, then every poem."""
+    """The page's middle: count strip, the Add a poem button (when the
+    token is set), contents, then every poem."""
     if not poems:
         return ""
     used = {"contents"}
@@ -130,6 +136,7 @@ def render_poetry(poems) -> str:
         '<span class="hint">↓ read</span>'
         "</div>"
     ]
+    parts.append(render_poem_form())
 
     # Links carry "poetry/" because the page's <base> points at the
     # front page; a bare "#id" would jump there instead.
