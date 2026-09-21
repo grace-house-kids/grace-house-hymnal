@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Grace House — static site builder.
+"""Grace House — static site builder. 
 
 Reads the same files server.py reads (hymns/, zine.txt, quote.txt,
 events.txt, who-we-are.txt, poems.txt, prayer.txt) and writes a complete
