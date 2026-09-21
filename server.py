@@ -135,6 +135,7 @@ from letters import (LETTERS_CSS, parse_letters, find_letter,
                      render_letters_index, render_letter)
 from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
                       render_recipe)
+from jerjer import JERJER_CSS, JERJER_IMAGES, load_critiques, render_jerjer
 from html import escape
 from pathlib import Path
 
@@ -1458,6 +1459,7 @@ CSS += POETRY_CSS
 CSS += PRAYER_CSS
 CSS += LETTERS_CSS
 CSS += COOKBOOK_CSS
+CSS += JERJER_CSS
 
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
@@ -1892,6 +1894,22 @@ def _verse_block_html(label: str, lines: list[str], show_chords: bool = False) -
         f'</section>'
     )
 
+def repeat_chorus(verses):
+    """Musician view: the chorus again after every numbered verse, so
+    auto-scroll never leaves her hunting back up the page for it.
+    Skipped where the file already has a chorus right after the verse.
+    Bridges, codas and other labeled blocks are left alone."""
+    chorus = next(((label, lines) for label, lines in verses
+                   if label.upper() == "C"), None)
+    if chorus is None:
+        return verses
+    out = []
+    for i, (label, lines) in enumerate(verses):
+        out.append((label, lines))
+        next_label = verses[i + 1][0] if i + 1 < len(verses) else ""
+        if label.isdigit() and next_label.upper() != "C":
+            out.append(chorus)
+    return out
 
 def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
                      musician: bool = False, meta: dict | None = None) -> str:
@@ -1908,6 +1926,9 @@ def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
         else:
             regular_verses.append((label, lines))
 
+    if musician:
+        regular_verses = repeat_chorus(regular_verses)                  
+                         
     verse_html = "\n".join(
         _verse_block_html(label, lines, show_chords=musician)
         for label, lines in regular_verses
@@ -1932,8 +1953,8 @@ def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
     player_html = ""
     if musician:
         speed = _parse_speed(meta.get("speed")) or DEFAULT_SPEED
-        player_html = render_player(speed, meta.get("key", ""))
-
+        player_html = render_player(speed, meta.get("key", "")) + render_jerjer(load_critiques())
+        
     # Links stay bare on public pages, prefixed with "musician/" on the mirror,
     # so the base href /{key}/ resolves them into the right subtree either way.
     hymn_prefix = "musician/hymn" if musician else "hymn"
@@ -2388,6 +2409,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(QR_PATH.read_bytes(), "image/png")
             else:
                 self._send(b"QR not found", "text/plain; charset=utf-8", 404)
+            return
+        if inner.lstrip("/") in JERJER_IMAGES:
+            img = JERJER_IMAGES[inner.lstrip("/")]
+            if img.exists():
+                self._send(img.read_bytes(), "image/png")
+            else:
+                self._blank()
             return
         if inner == "/qr":
             self._send(render_qr_page(key).encode("utf-8"), "text/html; charset=utf-8")
