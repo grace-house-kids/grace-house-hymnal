@@ -25,14 +25,15 @@ Output:
     dist/{key}/hymn/1/index.html         <- each hymn as its own page
     dist/{key}/musician/index.html       <- musician mirror TOC
     dist/{key}/musician/hymn/1/index.html
+    dist/{key}/audio/003-slug.mp3        <- each hymn's listen-along mp3
     dist/{key}/zine/index.html           <- the zine (or "coming soon")
     dist/{key}/events/index.html         <- calendar + events (or "coming soon")
     dist/{key}/kids/index.html           <- printable kids activity sheet
     dist/{key}/who-we-are/index.html     <- welcome + how an evening goes
     dist/{key}/poetry/index.html         <- the running chapbook
     dist/{key}/prayer-list/index.html    <- this month's prayer requests
+    dist/{key}/resources/index.html      <- downloadable files, by category
     dist/{key}/letters/index.html        <- "coming soon" pages for sections
-    dist/{key}/tracts/index.html            that aren't built yet
     dist/{key}/qr/index.html             <- QR code for the front page
 
 The URLs work exactly like your local server. Anyone without the key
@@ -240,7 +241,7 @@ def build() -> None:
         for level, msg in cookbook_notes(recipes):
             print(f"::{level}::cookbook.txt: {msg}" if on_github
                   else f"  ! cookbook.txt: {msg}")
-    
+
     # Letters — /{key}/letters/index.html plus a page per letter.
     if server.section_ready("letters"):
         page_out(f"{key}/letters/index.html", server.render_letters_page(key), key, 1)
@@ -266,11 +267,23 @@ def build() -> None:
                 if src.exists():
                     write(f"{key}/resources/{c['slug']}/{f['name']}",
                           src.read_bytes())
-            print(f"  {c['title']:<20} {len(c['files'])} files")    
-    
-    # "Coming soon" for every front-page section without a real page yet.
-    print("Sections:")
-    
+            print(f"  {c['title']:<20} {len(c['files'])} files")
+
+    # Song audio — copy each hymn's mp3 into the built site. The log
+    # shows the pairing so you can catch a wrong or missing file.
+    print("Audio:")
+    found = False
+    for number, title, _fp in hymns:
+        fname = server.find_audio(number)
+        if fname:
+            found = True
+            src = server.AUDIO_DIR / fname
+            if src.exists():
+                write(f"{key}/audio/{fname}", src.read_bytes())
+            print(f"  #{number:>3}  {title}  ->  {fname}")
+    if not found:
+        print("  (none)")
+
     # "Coming soon" for every front-page section without a real page yet.
     print("Sections:")
     for slug, title, _sub in server.SECTIONS:
