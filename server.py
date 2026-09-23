@@ -126,6 +126,7 @@ import secrets
 import socket
 import socketserver
 import sys
+import mimetypes
 import urllib.parse
 from kids import render_kids_sheet
 from who import WHO_CSS, parse_who, render_who
@@ -137,6 +138,9 @@ from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
                       render_recipe)
 from jerjer import JERJER_CSS, JERJER_IMAGES, load_critiques, render_jerjer
 from eventform import render_event_form
+from resources import (RESOURCES_CSS, parse_resources, find_category,
+                       find_resource_file, render_resources,
+                       render_resource_category)
 from html import escape
 from pathlib import Path
 
@@ -339,6 +343,8 @@ def section_ready(slug: str) -> bool:
         return parse_prayers(parse_event_date) is not None
     if slug == "cookbook":
         return parse_recipes() is not None
+    if slug == "resources":
+        return parse_resources() is not None
     if slug == "events":
         return EVENTS_PATH.exists()
     return slug in READY_SECTIONS
@@ -1471,6 +1477,7 @@ CSS += PRAYER_CSS
 CSS += LETTERS_CSS
 CSS += COOKBOOK_CSS
 CSS += JERJER_CSS
+CSS += RESOURCES_CSS
 
 
 # The GRACE H⊕USE brand mark, rendered inline. The 8-spoke wheel
@@ -2333,6 +2340,31 @@ def render_cookbook_page(key: str) -> str:
     )
     return page("Community Cookbook — Grace House", body, key)
 
+def render_resources_page(key: str) -> str:
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="." class="back-tag">← HOME</a>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f'<div class="title-tag"><h1>{escape(section_title("resources").upper())}</h1></div>\n'
+        f"{render_resources(parse_resources() or [])}"
+    )
+    return page("Resources — Grace House", body, key)
+
+
+def render_resource_category_page(key: str, slug: str) -> str | None:
+    cat = find_category(parse_resources() or [], slug)
+    if cat is None:
+        return None
+    body = (
+        '<div class="hymn-nav-top">'
+        '<a href="resources/" class="back-tag">← RESOURCES</a>'
+        '<span class="song-num">✦</span>'
+        "</div>\n"
+        f"{BRAND_LOGO}\n"
+        f"{render_resource_category(cat)}"
+    )
+    return page(f"{cat['title']} — Grace House", body, key)
 
 def render_recipe_page(number: int, key: str) -> str | None:
     """One recipe's page. None when there's no recipe with that number."""
@@ -2464,6 +2496,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 render_zine_page(title, sections, key).encode("utf-8"),
                 "text/html; charset=utf-8",
             )
+            return
+        if inner == "/resources" and section_ready("resources"):
+            self._send(render_resources_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
+            return
+        m = re.match(r"^/resources/([^/]+)/([^/]+)$", inner)
+        if m and section_ready("resources"):
+            cats = parse_resources() or []
+            fp = find_resource_file(cats, urllib.parse.unquote(m.group(1)),
+                                    urllib.parse.unquote(m.group(2)))
+            if fp is None:
+                self._blank()
+                return
+            ctype, _ = mimetypes.guess_type(fp.name)
+            try:
+                self._send(fp.read_bytes(), ctype or "application/octet-stream")
+            except OSError:
+                self._blank()
+            return
+        m = re.match(r"^/resources/([^/]+)$", inner)
+        if m and section_ready("resources"):
+            html = render_resource_category_page(
+                key, urllib.parse.unquote(m.group(1)))
+            if html is None:
+                self._blank()
+                return
+            self._send(html.encode("utf-8"), "text/html; charset=utf-8")
             return
         if inner == "/letters" and section_ready("letters"):
             self._send(render_letters_page(key).encode("utf-8"),
