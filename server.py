@@ -146,6 +146,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 HYMNS_DIR = HERE / "hymns"
+AUDIO_DIR = HERE / "audio"
 QR_PATH = HERE / "qr-code.png"
 KEY_PATH = HERE / "access-key.txt"
 ZINE_PATH = HERE / "zine.txt"
@@ -210,6 +211,17 @@ def load_hymns():
     hymns.sort(key=lambda h: h[0])
     return hymns
 
+def find_audio(number: int) -> str | None:
+    """Filename of a hymn's mp3 (audio/NNN-*.mp3, NNN = the hymn number),
+    or None. Only the leading number is matched; the rest of the name is
+    shown in the Listen box so you can spot a mismatch."""
+    if not AUDIO_DIR.is_dir():
+        return None
+    for path in sorted(AUDIO_DIR.glob("*.mp3")):
+        m = re.match(r"(\d+)[-_ ]", path.name)
+        if m and int(m.group(1)) == number:
+            return path.name
+    return None
 
 def parse_zine():
     """Return (title, [(heading, [body_lines]), ...]) from zine.txt,
@@ -1471,12 +1483,80 @@ html.dark .player { -webkit-text-stroke-color: #000000; }
   }
 }
 """
+LISTEN_CSS = r"""
+.p-listen { background: #f01a8b; border-color: #f01a8b; color: #0a0a0a; min-width: 96px; }
+.listen {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(10, 10, 10, 0.55); padding: 20px;
+}
+.listen[hidden] { display: none; }
+.listen-box {
+  width: 100%; max-width: 340px;
+  background: #f2ede4; border: 3px solid #0a0a0a; box-shadow: 8px 8px 0 #f01a8b;
+  padding: 16px 18px 20px;
+}
+.listen-box, .listen-box * {
+  -webkit-text-stroke-width: 0 !important;
+  -webkit-text-stroke-color: transparent !important;
+  paint-order: normal !important;
+}
+.listen-head { display: flex; align-items: center; justify-content: space-between; }
+.listen-title {
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 800; font-size: 14px; letter-spacing: 3px;
+  text-transform: uppercase; color: #f01a8b;
+}
+.listen-x {
+  border: 2px solid #0a0a0a; background: transparent; color: #0a0a0a;
+  width: 32px; height: 32px; font-size: 18px; line-height: 1; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.listen-x:active { transform: translateY(1px); }
+.listen-file {
+  font-family: 'Special Elite', 'Courier New', monospace; font-size: 13px;
+  color: #0a0a0a; word-break: break-all; margin: 4px 0 16px; opacity: 0.85;
+}
+.listen-row { display: flex; align-items: center; gap: 12px; }
+.listen-play {
+  flex-shrink: 0; font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 13px; letter-spacing: 1px; height: 40px; min-width: 96px;
+  border: 2px solid #0a0a0a; background: #0a0a0a; color: #f2ede4; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.listen-play.on { background: #f01a8b; border-color: #f01a8b; color: #0a0a0a; }
+.listen-play:active { transform: translateY(1px); }
+.listen-seek {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 6px; background: rgba(10, 10, 10, 0.25); outline: none; cursor: pointer;
+}
+.listen-seek::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 18px; height: 24px; background: #f01a8b; border: 2px solid #0a0a0a; cursor: pointer;
+}
+.listen-seek::-moz-range-thumb {
+  width: 18px; height: 24px; background: #f01a8b; border: 2px solid #0a0a0a;
+  border-radius: 0; cursor: pointer;
+}
+.listen-time {
+  margin-top: 10px; text-align: right; font-family: 'Special Elite', monospace;
+  font-size: 11px; letter-spacing: 1px; color: #0a0a0a; opacity: 0.7;
+}
+html.dark .listen-box { background: #000000; border-color: #f5f5f5; }
+html.dark .listen-x { border-color: #f5f5f5; color: #f5f5f5; }
+html.dark .listen-file, html.dark .listen-time { color: #f5f5f5; }
+html.dark .listen-play { background: #f5f5f5; color: #000000; border-color: #f5f5f5; }
+html.dark .listen-play.on { background: #f01a8b; border-color: #f01a8b; color: #000000; }
+html.dark .listen-seek { background: rgba(245, 245, 245, 0.25); }
+"""
+
 CSS += WHO_CSS
 CSS += POETRY_CSS
 CSS += PRAYER_CSS
 CSS += LETTERS_CSS
 CSS += COOKBOOK_CSS
 CSS += JERJER_CSS
+CSS += LISTEN_CSS
 CSS += RESOURCES_CSS
 
 
@@ -1634,6 +1714,76 @@ MUSICIAN_JS = r"""
   setSpeed(speed);
   setPlay();
 
+  /* ── Listen (standalone melody player) ────────────────── */
+  var listen = document.getElementById('listen');
+  if (listen) {
+    var la = $('listen-audio'), lplay = $('listen-play'), lseek = $('listen-seek');
+    var ltime = $('listen-time'), lraf = 0;
+    function ltFmt(s) {
+      if (!isFinite(s)) s = 0;
+      s = Math.floor(s);
+      return Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2);
+    }
+    function lSetPlay() {
+      var on = !la.paused;
+      lplay.textContent = on ? '\u275A\u275A PAUSE' : '\u25B6\uFE0E PLAY';
+      lplay.classList.toggle('on', on);
+    }
+    function lTick() {
+      if (!lseek.dragging)
+        lseek.value = la.duration ? (la.currentTime / la.duration * 1000) : 0;
+      ltime.textContent = ltFmt(la.currentTime) + ' / ' + ltFmt(la.duration);
+      if (!la.paused) lraf = requestAnimationFrame(lTick);
+    }
+    function lButtons(off) {
+      var b = player.querySelectorAll('button');
+      for (var i = 0; i < b.length; i++) b[i].disabled = off;
+    }
+    function lOpen() {
+      stop();                       // halt any auto-scroll; nothing moves behind the box
+      lButtons(true);
+      listen.hidden = false;
+      wake();
+      la.currentTime = 0;
+      la.play().catch(function () {});
+      lSetPlay();
+      cancelAnimationFrame(lraf); lraf = requestAnimationFrame(lTick);
+    }
+    function lClose() {
+      la.pause();
+      la.currentTime = 0;
+      listen.hidden = true;
+      cancelAnimationFrame(lraf);
+      lButtons(false);
+      unwake();
+      lSetPlay();
+    }
+    $('ctl-listen').onclick = lOpen;
+    $('listen-x').onclick = lClose;
+    lplay.onclick = function () {
+      if (la.paused) {
+        if (la.currentTime >= la.duration) la.currentTime = 0;
+        la.play().catch(function () {});
+        lraf = requestAnimationFrame(lTick);
+      } else { la.pause(); }
+      lSetPlay();
+    };
+    la.addEventListener('loadedmetadata', lTick);
+    la.addEventListener('ended', function () { lSetPlay(); lTick(); });
+    lseek.addEventListener('input', function () {
+      lseek.dragging = true;
+      if (la.duration)
+        ltime.textContent = ltFmt(lseek.value / 1000 * la.duration) + ' / ' + ltFmt(la.duration);
+    });
+    lseek.addEventListener('change', function () {
+      if (la.duration) la.currentTime = lseek.value / 1000 * la.duration;
+      lseek.dragging = false;
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!listen.hidden && e.key === 'Escape') lClose();
+    });
+  }
+  
   /* ── Transpose ────────────────────────────────────────── */
   var chords = Array.prototype.slice.call(document.querySelectorAll('.v-body .chord[data-chord]'));
   if (!chords.length) { $('ctl-key-group').hidden = true; return; }
@@ -1697,9 +1847,30 @@ MUSICIAN_JS = r"""
 """
 
 
-def render_player(speed: float, key: str) -> str:
-    """The musician control bar + countdown card + script."""
+def render_player(speed: float, key: str, audio: str | None = None) -> str:
+    """The musician control bar + countdown card + optional Listen box."""
     speed_txt = f"{speed:g}"
+    listen_btn = listen_modal = ""
+    if audio:
+        src = "audio/" + urllib.parse.quote(audio)
+        listen_btn = ('<button id="ctl-listen" class="p-btn p-listen" '
+                      'type="button">&#9834; LISTEN</button>')
+        listen_modal = (
+            '<div id="listen" class="listen" hidden role="dialog" aria-modal="true">'
+            '<div class="listen-box">'
+            '<div class="listen-head">'
+            '<span class="listen-title">Listen</span>'
+            '<button id="listen-x" class="listen-x" type="button" aria-label="Close">&times;</button>'
+            '</div>'
+            f'<div class="listen-file">{escape(audio)}</div>'
+            '<div class="listen-row">'
+            '<button id="listen-play" class="listen-play" type="button">&#9654;&#xFE0E; PLAY</button>'
+            '<input id="listen-seek" class="listen-seek" type="range" min="0" max="1000" value="0" aria-label="Seek">'
+            '</div>'
+            '<div id="listen-time" class="listen-time">0:00 / 0:00</div>'
+            f'<audio id="listen-audio" src="{escape(src)}" preload="metadata"></audio>'
+            '</div></div>\n'
+        )
     return (
         '<div class="player-spacer"></div>\n'
         f'<div id="player" class="player" data-speed="{escape(speed_txt)}" data-key="{escape(key)}">\n'
@@ -1713,6 +1884,7 @@ def render_player(speed: float, key: str) -> str:
         '</div>'
         '<button id="ctl-theme" class="p-btn p-theme" type="button" aria-label="Switch normal / dark mode">'
         '<span class="t-sun">&#9728;&#xFE0E;</span><span class="t-moon">&#9790;&#xFE0E;</span></button>'
+        f'{listen_btn}'
         '</div>\n'
         '<div class="p-row">'
         '<div class="p-group" id="ctl-key-group">'
@@ -1736,9 +1908,9 @@ def render_player(speed: float, key: str) -> str:
         '<div class="cd-hint">tap pause to cancel</div>'
         '</div>'
         '</div>\n'
+        f'{listen_modal}'
         f"<script>{MUSICIAN_JS}</script>"
     )
-
 
 def page(title_text: str, body_html: str, key: str, musician: bool = False) -> str:
     base = f"/{key}/"
@@ -1971,7 +2143,8 @@ def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
     player_html = ""
     if musician:
         speed = _parse_speed(meta.get("speed")) or DEFAULT_SPEED
-        player_html = render_player(speed, meta.get("key", "")) + render_jerjer(load_critiques())
+        audio = find_audio(number)
+        player_html = render_player(speed, meta.get("key", ""), audio=audio) + render_jerjer(load_critiques())
         
     # Links stay bare on public pages, prefixed with "musician/" on the mirror,
     # so the base href /{key}/ resolves them into the right subtree either way.
@@ -2418,6 +2591,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_audio(self, path):
+        try:
+            data = path.read_bytes()
+        except OSError:
+            self._blank()
+            return
+        total = len(data)
+        rng = self.headers.get("Range", "")
+        if rng.startswith("bytes="):
+            try:
+                s, _, e = rng[6:].partition("-")
+                start = int(s) if s else 0
+                end = int(e) if e else total - 1
+                start, end = max(0, start), min(end, total - 1)
+                if start > end:
+                    raise ValueError
+            except ValueError:
+                start, end = 0, total - 1
+            chunk = data[start:end + 1]
+            self.send_response(206)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{total}")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(len(chunk)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(chunk)
+        else:
+            self.send_response(200)
+            self.send_header("Content-Type", "audio/mpeg")
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Content-Length", str(total))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+
     def _redirect(self, location: str):
         self.send_response(301)
         self.send_header("Location", location)
@@ -2453,6 +2662,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self._send(QR_PATH.read_bytes(), "image/png")
             else:
                 self._send(b"QR not found", "text/plain; charset=utf-8", 404)
+            return
+        m = re.match(r"^/audio/([^/]+\.mp3)$", inner)
+        if m:
+            path = (AUDIO_DIR / urllib.parse.unquote(m.group(1))).resolve()
+            if path.is_file() and path.parent == AUDIO_DIR.resolve():
+                self._send_audio(path)
+            else:
+                self._blank()
             return
         if inner.lstrip("/") in JERJER_IMAGES:
             img = JERJER_IMAGES[inner.lstrip("/")]
