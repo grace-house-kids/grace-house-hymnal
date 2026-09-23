@@ -51,6 +51,7 @@ import server
 from prayer import parse_prayers, prayer_notes
 from letters import parse_letters
 from cookbook import parse_recipes, cookbook_notes
+from resources import parse_resources, RESOURCES_DIR
 from jerjer import JERJER_IMAGES
 
 HERE = Path(__file__).resolve().parent
@@ -248,8 +249,25 @@ def build() -> None:
             page_out(f"{key}/letters/{slug}/index.html",
                      server.render_letter_page(key, slug), key, 2)
             print(f"  {link}  →  letters/{slug}/")
-    # ↑↑↑ new block ends here ↑↑↑
 
+    # Resources — /{key}/resources/index.html, a page per category, and
+    # the actual files copied in so they're there to download.
+    if server.section_ready("resources"):
+        cats = parse_resources() or []
+        page_out(f"{key}/resources/index.html",
+                 server.render_resources_page(key), key, 1)
+        print(f"Resources: {len(cats)} categories")
+        for c in cats:
+            page_out(f"{key}/resources/{c['slug']}/index.html",
+                     server.render_resource_category_page(key, c["slug"]),
+                     key, 2)
+            for f in c["files"]:
+                src = RESOURCES_DIR / c["folder"] / f["name"]
+                if src.exists():
+                    write(f"{key}/resources/{c['slug']}/{f['name']}",
+                          src.read_bytes())
+            print(f"  {c['title']:<20} {len(c['files'])} files")    
+    
     # "Coming soon" for every front-page section without a real page yet.
     print("Sections:")
     
