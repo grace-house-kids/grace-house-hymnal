@@ -246,8 +246,10 @@ def render_resource_category(category) -> str:
 # Styles  (server.py does:  CSS += RESOURCES_CSS)
 
 RESOURCES_CSS = r"""
-/* The bulletin button sits above the file categories with a little air. */
-.bulletin-cta { margin: 0 0 22px; }
+/* The bulletin button sits below the title tag and above the file
+   categories, with a little air on both sides so it doesn't jam up
+   under the RESOURCES chip. */
+.bulletin-cta { margin: 24px 0 22px; }
 /* ────────────────────────────────────────────────────────────
    RESOURCES — category cards reuse .sec; per-category file lists
    get their own rows with an image preview or a type badge.
