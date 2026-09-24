@@ -141,6 +141,7 @@ from eventform import render_event_form
 from resources import (RESOURCES_CSS, parse_resources, find_category,
                        find_resource_file, render_resources,
                        render_resource_category)
+from bulletin import render_bulletin, parse_bulletin_verses
 from html import escape
 from pathlib import Path
 
@@ -2714,10 +2715,28 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 "text/html; charset=utf-8",
             )
             return
+
+        if inner == "/bulletin":
+            html = render_bulletin(
+                key,
+                zine_data=parse_zine(),
+                who_data=parse_who(),
+                prayer_data=parse_prayers(parse_event_date),
+                verses=parse_bulletin_verses(),
+            )
+            data = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+            
         if inner == "/resources" and section_ready("resources"):
             self._send(render_resources_page(key).encode("utf-8"),
                        "text/html; charset=utf-8")
             return
+            
         m = re.match(r"^/resources/([^/]+)/([^/]+)$", inner)
         if m and section_ready("resources"):
             cats = parse_resources() or []
