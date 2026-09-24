@@ -283,6 +283,7 @@ def build() -> None:
         who_data=server.parse_who(),
         prayer_data=parse_prayers(server.parse_event_date),
         verses=server.parse_bulletin_verses(),
+        events_data=server.parse_events()[0],   # ← add this
     ))
     print("Bulletin: built")
     
