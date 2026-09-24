@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Grace House — a tiny web site for a home church.
+"""Grace House — a tiny web site for a home church. 
 
 The front page (/{key}/) shows a swappable quote and a button for each
 section of the site. The hymnal reads plain-text hymns from ./hymns and
