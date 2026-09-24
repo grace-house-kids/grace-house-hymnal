@@ -269,6 +269,23 @@ def build() -> None:
                           src.read_bytes())
             print(f"  {c['title']:<20} {len(c['files'])} files")
 
+    # Bulletin — /{key}/bulletin/index.html. A self-contained print sheet:
+    # the cover is embedded, and the QR codes, the date and the editable
+    # zine are worked out in the browser, so this one build serves every
+    # week until you rebuild. It isn't wrapped in page() (no site chrome),
+    # so it uses write() directly, not page_out() — there's no <base href>
+    # or internal link to rewrite, and its QR codes find the site root
+    # from the page's own address. Always built, so the Resources button
+    # never lands on a 404.
+    write(f"{key}/bulletin/index.html", server.render_bulletin(
+        key,
+        zine_data=server.parse_zine(),
+        who_data=server.parse_who(),
+        prayer_data=parse_prayers(server.parse_event_date),
+        verses=server.parse_bulletin_verses(),
+    ))
+    print("Bulletin: built")
+    
     # Song audio — copy each hymn's mp3 into the built site. The log
     # shows the pairing so you can catch a wrong or missing file.
     print("Audio:")
