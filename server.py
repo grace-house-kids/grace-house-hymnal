@@ -2723,6 +2723,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 who_data=parse_who(),
                 prayer_data=parse_prayers(parse_event_date),
                 verses=parse_bulletin_verses(),
+                events_data=parse_events()[0],   # ← add this
             )
             data = html.encode("utf-8")
             self.send_response(200)
