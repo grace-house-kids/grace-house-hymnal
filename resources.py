@@ -164,11 +164,19 @@ def find_resource_file(categories, slug, filename):
 # ─────────────────────────────────────────────────────────────
 # Rendering  (returns the inner body; server.py wraps it with the
 # brand mark + page() shell, same as the other sections.)
-
 def render_resources(categories) -> str:
-    """The Resources index: one card per category."""
+    """The Resources index: the bulletin button, then one card per category."""
+    bulletin = (
+        '<ul class="sections bulletin-cta">\n'
+        '<li><a class="sec" href="bulletin">'
+        '<span><span class="sec-name">Print the Bulletin</span>'
+        "<span class=\"sec-sub\">This week's tri-fold, ready to fold &amp; print</span>"
+        '</span><span class="sec-arrow" aria-hidden="true">→</span></a></li>\n'
+        "</ul>\n"
+    )
     if not categories:
-        return ('<p class="res-empty">Nothing here yet. Make a folder under '
+        return (bulletin
+                + '<p class="res-empty">Nothing here yet. Make a folder under '
                 "./resources (like resources/tracts) and drop files in.</p>")
     total = sum(len(c["files"]) for c in categories)
     items = []
@@ -189,8 +197,7 @@ def render_resources(categories) -> str:
         '<span class="hint">↓ pick one</span>'
         "</div>\n"
     )
-    return meta + '<ul class="sections">\n' + "\n".join(items) + "\n</ul>"
-
+    return bulletin + meta + '<ul class="sections">\n' + "\n".join(items) + "\n</ul>"
 
 def render_resource_category(category) -> str:
     """One category: its own title tag, an optional blurb, then the
@@ -239,6 +246,8 @@ def render_resource_category(category) -> str:
 # Styles  (server.py does:  CSS += RESOURCES_CSS)
 
 RESOURCES_CSS = r"""
+/* The bulletin button sits above the file categories with a little air. */
+.bulletin-cta { margin: 0 0 22px; }
 /* ────────────────────────────────────────────────────────────
    RESOURCES — category cards reuse .sec; per-category file lists
    get their own rows with an image preview or a type badge.
