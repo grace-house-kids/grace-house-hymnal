@@ -249,7 +249,7 @@ RESOURCES_CSS = r"""
 /* The bulletin button sits below the title tag and above the file
    categories, with a little air on both sides so it doesn't jam up
    under the RESOURCES chip. */
-.bulletin-cta { margin: 24px 0 22px; }
+.bulletin-cta { margin: 124px 0 22px; }
 /* ────────────────────────────────────────────────────────────
    RESOURCES — category cards reuse .sec; per-category file lists
    get their own rows with an image preview or a type badge.
