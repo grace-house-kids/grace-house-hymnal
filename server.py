@@ -138,6 +138,7 @@ from cookbook import (COOKBOOK_CSS, parse_recipes, render_cookbook,
                       render_recipe)
 from jerjer import JERJER_CSS, JERJER_IMAGES, load_critiques, render_jerjer
 from eventform import render_event_form
+from songedit import render_song_editor
 from resources import (RESOURCES_CSS, parse_resources, find_category,
                        find_resource_file, render_resources,
                        render_resource_category)
@@ -163,8 +164,8 @@ DEFAULT_PORT = 8000
 # size, so the same number always feels the same).
 DEFAULT_SPEED = 4
 
-# [Speed:4] / [Key:G] on a line by themselves.
-META_RE = re.compile(r"^\s*\[\s*(speed|key)\s*:\s*([^\]]*?)\s*\]\s*$", re.IGNORECASE)
+# [Speed:4] / [Key:G] / [Capo:3] on a line by themselves.
+META_RE = re.compile(r"^\s*\[\s*(speed|key|capo)\s*:\s*([^\]]*?)\s*\]\s*$", re.IGNORECASE)
 
 # ─────────────────────────────────────────────────────────────
 # Access key
@@ -1146,6 +1147,29 @@ main { position: relative; }
   border-color: #f01a8b;
   color: #0a0a0a;
 }
+.p-capo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  line-height: 1;
+}
+.p-capo .p-capo-lbl {
+  font-family: 'Special Elite', monospace;
+  font-size: 9px;
+  letter-spacing: 1px;
+  opacity: 0.65;
+}
+.p-capo b {
+  font-family: 'Big Shoulders Stencil Text', 'Impact', sans-serif;
+  font-weight: 800;
+  font-size: 21px;
+  margin-top: 2px;
+}
+.p-capo.on { background: #f01a8b; border-color: #f01a8b; color: #0a0a0a; }
+.p-capo.on .p-capo-lbl { opacity: 0.8; }
+html.dark .p-capo.on { background: #f01a8b; border-color: #f01a8b; color: #000000; }
 .p-val {
   display: flex;
   flex-direction: column;
@@ -1894,6 +1918,9 @@ def render_player(speed: float, key: str, audio: str | None = None) -> str:
         '<button id="ctl-key-up" class="p-btn p-sq" type="button" aria-label="Key up a half step">+</button>'
         '<button id="ctl-key-reset" class="p-btn p-sq" type="button" aria-label="Original key">&#8634;</button>'
         '</div>'
+        '<button id="ctl-capo" class="p-btn p-capo" type="button" aria-pressed="false" '
+        'aria-label="Capo — tap to set the fret">'
+        '<span class="p-capo-lbl">CAPO</span><b id="ctl-capo-val">OFF</b></button>'
         '<div class="p-group">'
         '<button id="ctl-fs-dn" class="p-btn p-sq" type="button" aria-label="Smaller text">&minus;</button>'
         '<span id="ctl-fs" class="p-val"><small>SIZE</small><b id="ctl-fs-val">100%</b></span>'
@@ -2045,7 +2072,7 @@ def render_zine_page(title, sections, key):
 CHORD_RE = re.compile(r'\[([^\]]+)\]')
 
 
-def _render_line(line: str, show_chords: bool) -> str:
+def _render_line(line: str, show_chords: bool, ci: list | None = None) -> str:
     """Render one lyric line as HTML.
 
     show_chords=False: [X] markers are STRIPPED and the line is rendered
@@ -2056,6 +2083,11 @@ def _render_line(line: str, show_chords: bool) -> str:
     the chord doesn't float above. This is the musician view. Each chord
     also carries its original text in data-chord so the transpose
     buttons can always work from the written chord.
+
+    ci, when given, is a one-item list used as a running counter so each
+    chord gets a data-ci = its index in FILE order. songedit.py counts
+    the file the same way, so a data-ci maps to exactly one marker in the
+    hymn file (see render_song_editor). Left None on the public view.
     """
     if not show_chords:
         return f'<div class="line">{escape(CHORD_RE.sub("", line))}</div>'
@@ -2067,17 +2099,22 @@ def _render_line(line: str, show_chords: bool) -> str:
     for i in range(1, len(parts), 2):
         chord = parts[i]
         following = parts[i + 1] if i + 1 < len(parts) else ""
+        ci_attr = ""
+        if ci is not None:
+            ci_attr = f' data-ci="{ci[0]}"'
+            ci[0] += 1
         out += (
-            f'<span class="chord" data-chord="{escape(chord)}">[{escape(chord)}]</span>'
+            f'<span class="chord" data-chord="{escape(chord)}"{ci_attr}>[{escape(chord)}]</span>'
             f'{escape(following)}'
         )
     return f'<div class="line has-chords">{out}</div>'
 
 
-def _verse_block_html(label: str, lines: list[str], show_chords: bool = False) -> str:
+def _verse_block_html(label: str, lines: list[str], show_chords: bool = False,
+                      ci: list | None = None) -> str:
     is_chorus = label.upper() == "C"
     chorus_cls = " chorus" if is_chorus else ""
-    body_html = "\n".join(_render_line(ln, show_chords) for ln in lines)
+    body_html = "\n".join(_render_line(ln, show_chords, ci) for ln in lines)
     return (
         f'<section class="verse{chorus_cls}">'
         f'<span class="v-label">{escape(label)}</span>'
@@ -2118,12 +2155,32 @@ def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
             regular_verses.append((label, lines))
 
     if musician:
-        regular_verses = repeat_chorus(regular_verses)                  
-                         
-    verse_html = "\n".join(
-        _verse_block_html(label, lines, show_chords=musician)
-        for label, lines in regular_verses
-    )
+        # Stamp each chord with its index in FILE order (data-ci) BEFORE
+        # the chorus is duplicated, then repeat the chorus at the HTML
+        # level so every rendered copy keeps the SAME data-ci -> one
+        # marker in the hymn file. songedit.py counts the file the same
+        # way, which is what lets a chord edit save to the right place.
+        ci = [0]
+        rendered_blocks = [
+            (label, _verse_block_html(label, lines, show_chords=True, ci=ci))
+            for label, lines in regular_verses
+        ]
+        chorus_block = next(
+            ((lab, h) for lab, h in rendered_blocks if lab.upper() == "C"), None)
+        if chorus_block is not None:
+            expanded = []
+            for i, (lab, h) in enumerate(rendered_blocks):
+                expanded.append((lab, h))
+                nxt = rendered_blocks[i + 1][0] if i + 1 < len(rendered_blocks) else ""
+                if lab.isdigit() and nxt.upper() != "C":
+                    expanded.append(chorus_block)
+            rendered_blocks = expanded
+        verse_html = "\n".join(h for _, h in rendered_blocks)
+    else:
+        verse_html = "\n".join(
+            _verse_block_html(label, lines, show_chords=False)
+            for label, lines in regular_verses
+        )
 
     notes_html = ""
     if musician and notes_lines:
@@ -2145,7 +2202,9 @@ def render_hymn_page(number, title, verses, prev_n, next_n, key: str,
     if musician:
         speed = _parse_speed(meta.get("speed")) or DEFAULT_SPEED
         audio = find_audio(number)
-        player_html = render_player(speed, meta.get("key", ""), audio=audio) + render_jerjer(load_critiques())
+        player_html = (render_player(speed, meta.get("key", ""), audio=audio)
+                       + render_song_editor(number, meta.get("capo", ""))
+                       + render_jerjer(load_critiques()))
         
     # Links stay bare on public pages, prefixed with "musician/" on the mirror,
     # so the base href /{key}/ resolves them into the right subtree either way.
