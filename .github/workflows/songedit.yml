@@ -44,6 +44,11 @@ on:
         required: false
         type: string
         default: ''
+      offset:
+        description: Characters to slide the chord along its line (chord action, + right / - left)
+        required: false
+        type: string
+        default: '0'
 
 permissions:
   contents: write   # save the hymn file
@@ -64,6 +69,7 @@ jobs:
           ED_CI: ${{ inputs.ci }}
           ED_FROM: ${{ inputs.from }}
           ED_TO: ${{ inputs.to }}
+          ED_OFFSET: ${{ inputs.offset }}
         run: |
           git config user.name "Grace House website"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
