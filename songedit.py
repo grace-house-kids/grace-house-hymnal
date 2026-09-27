@@ -51,6 +51,7 @@ HERE = Path(__file__).resolve().parent
 HYMNS_DIR = HERE / "hymns"
 BRANCH = "main"
 MAX_CAPO = 7
+MAX_MOVE = 40          # most characters a chord can be nudged in one save
 
 # Kept in step with server.py. CHORD_RE matches any [..]; the real
 # chords are picked out by chord_spans() below, which excludes the same
@@ -153,9 +154,12 @@ def chord_spans(raw: str) -> list[tuple[int, int, str]]:
 # ─────────────────────────────────────────────────────────────
 # The edits themselves (pure string in, string out — easy to test)
 
-def set_chord(raw: str, ci: int, frm: str, to: str) -> str:
-    """Replace the ci-th real chord marker, but only if it still reads
-    [frm]. Raises ValueError otherwise (the guard)."""
+def set_chord(raw: str, ci: int, frm: str, to: str, offset: int = 0) -> str:
+    """Replace the ci-th real chord marker (only if it still reads [frm] —
+    the guard), and optionally slide it `offset` characters along its own
+    line: >0 right, <0 left. The marker never crosses another chord marker
+    or the ends of its line; it just stops there. Lyrics are untouched —
+    only where the invisible [..] sits moves."""
     spans = chord_spans(raw)
     if ci < 0 or ci >= len(spans):
         raise ValueError(f"there's no chord #{ci} (the song has {len(spans)}).")
@@ -165,7 +169,28 @@ def set_chord(raw: str, ci: int, frm: str, to: str) -> str:
                          "the song changed since the page loaded, so nothing was touched.")
     if not _valid_chord(to):
         raise ValueError(f"[{to}] isn't a chord I'll write into the file.")
-    return raw[:s] + "[" + to + "]" + raw[e:]
+    try:
+        off = max(-MAX_MOVE, min(MAX_MOVE, int(offset)))
+    except (TypeError, ValueError):
+        off = 0
+    marker = "[" + to + "]"
+    ls = raw.rfind("\n", 0, s) + 1          # start of this line
+    le = raw.find("\n", e)                   # end of this line
+    if le == -1:
+        le = len(raw)
+    if off > 0:
+        right = raw[e:le]
+        take = 0
+        while take < off and take < len(right) and right[take] != "[":
+            take += 1
+        return raw[:s] + right[:take] + marker + raw[e + take:]
+    if off < 0:
+        left = raw[ls:s]
+        take = 0
+        while take < -off and take < len(left) and left[len(left) - 1 - take] != "]":
+            take += 1
+        return raw[:s - take] + marker + raw[s - take:s] + raw[e:]
+    return raw[:s] + marker + raw[e:]
 
 
 def set_capo(raw: str, value: int) -> str:
@@ -215,6 +240,11 @@ def _apply_from_env() -> int:
         cir = (os.environ.get("ED_CI") or "").strip()
         frm = (os.environ.get("ED_FROM") or "").strip()
         to = (os.environ.get("ED_TO") or "").strip()
+        off_raw = (os.environ.get("ED_OFFSET") or "0").strip()
+        try:
+            off = int(off_raw)
+        except ValueError:
+            off = 0
         if not cir.isdigit():
             print("::error::Missing or bad chord index.")
             return 1
@@ -222,11 +252,11 @@ def _apply_from_env() -> int:
             print("::error::Missing or bad chord text.")
             return 1
         try:
-            new = set_chord(raw, int(cir), frm, to)
+            new = set_chord(raw, int(cir), frm, to, off)
         except ValueError as e:
             print(f"::error::{e}")
             return 1
-        what = f"chord #{cir}: [{frm}] to [{to}]"
+        what = f"chord #{cir}: [{frm}] to [{to}]" + (f", moved {off:+d}" if off else "")
     else:
         print('::error::Unknown action (want "capo" or "chord").')
         return 1
@@ -258,6 +288,12 @@ SONGEDIT_CSS = r"""
   font-weight: 900; font-size: 56px; line-height: 0.9; color: #f01a8b;
   min-width: 96px; font-variant-numeric: tabular-nums;
 }
+.se-moverow { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 4px 0 2px; }
+.se-pos {
+  min-width: 96px; font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 12px; letter-spacing: 1px; color: #0a0a0a; opacity: 0.7;
+}
+html.dark .se-pos { color: #f5f5f5; }
 .se-hint {
   font-family: 'Special Elite', 'Courier New', monospace; font-size: 11px;
   line-height: 1.5; color: #0a0a0a; opacity: 0.7; margin: 6px 0 14px;
@@ -379,6 +415,31 @@ SONGEDIT_JS = r"""
   if (canSave) {
     document.documentElement.classList.add('se-on');
     var modal = $('se-modal'), disp = $('se-chord'), stat = $('se-status'), saveBtn = $('se-save');
+    var posEl = $('se-pos'), moveOffset = 0, MAXMOVE = 40;
+    function showPos() {
+      posEl.textContent = moveOffset === 0 ? 'in place'
+        : (moveOffset < 0 ? '◄ ' + (-moveOffset) : moveOffset + ' ►');
+    }
+    // Slide a chord span one character along its line, across the lyric
+    // text but never past another chord or the line's edge (matching the
+    // file-side move). Cosmetic only — the saved file is the source of truth.
+    function domMove(span, steps) {
+      var dir = steps < 0 ? -1 : 1, n = Math.abs(steps);
+      for (var k = 0; k < n; k++) {
+        if (dir > 0) {
+          var nx = span.nextSibling;
+          if (!nx || nx.nodeType !== 3 || !nx.textContent.length) break;
+          span.parentNode.insertBefore(document.createTextNode(nx.textContent[0]), span);
+          nx.textContent = nx.textContent.slice(1);
+        } else {
+          var pv = span.previousSibling;
+          if (!pv || pv.nodeType !== 3 || !pv.textContent.length) break;
+          span.parentNode.insertBefore(
+            document.createTextNode(pv.textContent[pv.textContent.length - 1]), span.nextSibling);
+          pv.textContent = pv.textContent.slice(0, -1);
+        }
+      }
+    }
 
     var SHARP = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
     var FLAT  = ['C','Db','D','Eb','E','F','Gb','G','Ab','A','Bb','B'];
@@ -405,6 +466,8 @@ SONGEDIT_JS = r"""
       fromChord = el.getAttribute('data-chord');
       working = fromChord;
       disp.textContent = working;
+      moveOffset = 0;
+      showPos();
       stat.textContent = '';
       saveBtn.disabled = false;
       modal.hidden = false;
@@ -424,6 +487,8 @@ SONGEDIT_JS = r"""
     }
     $('se-up').onclick = function () { nudge(1); };
     $('se-dn').onclick = function () { nudge(-1); };
+    $('se-right').onclick = function () { if (moveOffset < MAXMOVE) { moveOffset++; showPos(); } };
+    $('se-left').onclick = function () { if (moveOffset > -MAXMOVE) { moveOffset--; showPos(); } };
     $('se-x').onclick = close;
     $('se-cancel').onclick = close;
     document.addEventListener('keydown', function (e) {
@@ -431,12 +496,13 @@ SONGEDIT_JS = r"""
     });
 
     saveBtn.onclick = function () {
-      if (working === fromChord) { close(); return; }
+      if (working === fromChord && moveOffset === 0) { close(); return; }
       var ci = curEl.getAttribute('data-ci');
-      var to = working;
+      var to = working, off = moveOffset;
       saveBtn.disabled = true;
       stat.textContent = 'Saving…';
-      dispatch({ action: 'chord', hymn: num, ci: String(ci), from: fromChord, to: to })
+      dispatch({ action: 'chord', hymn: num, ci: String(ci), from: fromChord,
+                 to: to, offset: String(off) })
         .then(function () {
           // Update every copy that shares this ci (a repeated chorus)
           // so the page matches what will come back after the rebuild.
@@ -444,6 +510,7 @@ SONGEDIT_JS = r"""
           for (var j = 0; j < twins.length; j++) {
             twins[j].setAttribute('data-chord', to);
             twins[j].textContent = '[' + to + ']';
+            if (off) domMove(twins[j], off);
           }
           close();
           toast('Chord saved — everyone sees it after the site rebuilds (about a minute).');
@@ -490,8 +557,14 @@ def render_song_editor(number, capo_meta: str = "") -> str:
         '<b id="se-chord" class="se-chord">&nbsp;</b>'
         '<button id="se-up" class="p-btn p-sq" type="button" aria-label="Up a half step">+</button>'
         '</div>'
-        '<p class="se-hint">The chord as written in the songbook. Saved for '
-        'everyone; the page updates after the site rebuilds (about a minute).</p>'
+        '<div class="se-moverow">'
+        '<button id="se-left" class="p-btn p-sq" type="button" aria-label="Move chord left">&#9664;</button>'
+        '<span id="se-pos" class="se-pos">in place</span>'
+        '<button id="se-right" class="p-btn p-sq" type="button" aria-label="Move chord right">&#9654;</button>'
+        '</div>'
+        '<p class="se-hint">&minus; / + change the chord; &#9664; &#9654; slide it '
+        'to another syllable. Saved for everyone; the page updates after the '
+        'site rebuilds (about a minute).</p>'
         '<div class="listen-row se-actions">'
         '<button id="se-save" class="listen-play" type="button">Save</button>'
         '<button id="se-cancel" class="listen-x se-cancel" type="button">Cancel</button>'
