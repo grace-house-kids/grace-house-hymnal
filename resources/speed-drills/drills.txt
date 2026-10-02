@@ -1,0 +1,47 @@
+# Speed Drills — one verse per line. Lines starting with # never show.
+#
+#   Reference | the verse text
+#
+# The text after | is optional. With it, "Found it" shows the verse so
+# everyone can check; without it, only the reference is shown.
+# Pressing New picks one at random, and every verse comes up once
+# before any repeats. Starter list: grace, King James Version.
+
+Ephesians 2:8-9 | For by grace are ye saved through faith; and that not of yourselves: it is the gift of God: Not of works, lest any man should boast.
+Ephesians 2:4-5 | But God, who is rich in mercy, for his great love wherewith he loved us, Even when we were dead in sins, hath quickened us together with Christ, (by grace ye are saved;)
+Ephesians 1:7 | In whom we have redemption through his blood, the forgiveness of sins, according to the riches of his grace;
+Romans 3:23-24 | For all have sinned, and come short of the glory of God; Being justified freely by his grace through the redemption that is in Christ Jesus:
+Romans 4:5 | But to him that worketh not, but believeth on him that justifieth the ungodly, his faith is counted for righteousness.
+Romans 5:8 | But God commendeth his love toward us, in that, while we were yet sinners, Christ died for us.
+Romans 5:20 | Moreover the law entered, that the offence might abound. But where sin abounded, grace did much more abound:
+Romans 6:23 | For the wages of sin is death; but the gift of God is eternal life through Jesus Christ our Lord.
+Romans 8:1 | There is therefore now no condemnation to them which are in Christ Jesus, who walk not after the flesh, but after the Spirit.
+Romans 10:13 | For whosoever shall call upon the name of the Lord shall be saved.
+Romans 11:6 | And if by grace, then is it no more of works: otherwise grace is no more grace.
+Titus 2:11 | For the grace of God that bringeth salvation hath appeared to all men,
+Titus 3:5 | Not by works of righteousness which we have done, but according to his mercy he saved us, by the washing of regeneration, and renewing of the Holy Ghost;
+John 1:14 | And the Word was made flesh, and dwelt among us, (and we beheld his glory, the glory as of the only begotten of the Father,) full of grace and truth.
+John 1:16-17 | And of his fulness have all we received, and grace for grace. For the law was given by Moses, but grace and truth came by Jesus Christ.
+John 3:16 | For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.
+John 6:37 | All that the Father giveth me shall come to me; and him that cometh to me I will in no wise cast out.
+John 10:28 | And I give unto them eternal life; and they shall never perish, neither shall any man pluck them out of my hand.
+Acts 15:11 | But we believe that through the grace of the Lord Jesus Christ we shall be saved, even as they.
+2 Corinthians 5:21 | For he hath made him to be sin for us, who knew no sin; that we might be made the righteousness of God in him.
+2 Corinthians 12:9 | And he said unto me, My grace is sufficient for thee: for my strength is made perfect in weakness.
+Galatians 2:20 | I am crucified with Christ: nevertheless I live; yet not I, but Christ liveth in me: and the life which I now live in the flesh I live by the faith of the Son of God, who loved me, and gave himself for me.
+Galatians 2:21 | I do not frustrate the grace of God: for if righteousness come by the law, then Christ is dead in vain.
+Philippians 1:6 | Being confident of this very thing, that he which hath begun a good work in you will perform it until the day of Jesus Christ:
+1 Timothy 1:15 | This is a faithful saying, and worthy of all acceptation, that Christ Jesus came into the world to save sinners; of whom I am chief.
+2 Timothy 1:9 | Who hath saved us, and called us with an holy calling, not according to our works, but according to his own purpose and grace, which was given us in Christ Jesus before the world began,
+Hebrews 4:16 | Let us therefore come boldly unto the throne of grace, that we may obtain mercy, and find grace to help in time of need.
+Hebrews 10:17 | And their sins and iniquities will I remember no more.
+1 Peter 3:18 | For Christ also hath once suffered for sins, the just for the unjust, that he might bring us to God,
+1 John 1:9 | If we confess our sins, he is faithful and just to forgive us our sins, and to cleanse us from all unrighteousness.
+1 John 4:10 | Herein is love, not that we loved God, but that he loved us, and sent his Son to be the propitiation for our sins.
+Matthew 11:28 | Come unto me, all ye that labour and are heavy laden, and I will give you rest.
+Luke 19:10 | For the Son of man is come to seek and to save that which was lost.
+Psalm 103:12 | As far as the east is from the west, so far hath he removed our transgressions from us.
+Isaiah 1:18 | Come now, and let us reason together, saith the LORD: though your sins be as scarlet, they shall be as white as snow; though they be red like crimson, they shall be as wool.
+Isaiah 53:5 | But he was wounded for our transgressions, he was bruised for our iniquities: the chastisement of our peace was upon him; and with his stripes we are healed.
+Isaiah 53:6 | All we like sheep have gone astray; we have turned every one to his own way; and the LORD hath laid on him the iniquity of us all.
+Lamentations 3:22-23 | It is of the LORD's mercies that we are not consumed, because his compassions fail not. They are new every morning: great is thy faithfulness.
