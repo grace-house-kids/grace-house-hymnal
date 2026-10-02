@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Grace House — edit a hymn from the musician page, saved to the songbook.
 
-Two things the musician can change on /musician/hymn/N/ and have saved
+Three things the musician can change on /musician/hymn/N/ and have saved
 back to the hymn file for everyone — the same way the events form saves
 an event (eventform.py + .github/workflows/events.yml):
 
     CAPO    the [Capo:X] line in the hymn file (0 = no capo line)
     CHORD   one chord marker [X], nudged up or down a half step
+    TEXT    the whole hymn file, edited as plain text ("✎ Edit song")
 
 How it works: the musician page sends a workflow_dispatch to
 .github/workflows/songedit.yml, which runs "python3 songedit.py set",
@@ -25,6 +26,13 @@ marker, the Action checks the chord still reads what the page thought it
 was (ED_FROM). If the file moved on, it refuses instead of editing the
 wrong chord. Worst case is a declined save, never a scrambled song.
 
+Why text edits are safe: the page sends ED_BASE, a SHA-256 of the file
+as the page loaded it. If the file changed since (another save landed
+first), the Action refuses rather than overwrite it. The page keeps her
+edit on the device as a draft until a reloaded page shows it really
+made it into the songbook, so a refused save is never lost work — the
+next time she opens the editor she's offered "Load it".
+
 RESTORE ORIGINAL: the "↺ Restore original" button puts a hymn back the
 way YOU last saved it, undoing every chord/capo change made from the
 website since. Nothing extra is stored: every website save is committed
@@ -41,15 +49,19 @@ and META_RE widened to (speed|key|capo) so [Capo:X] is read, not shown.
 
 The Action passes everything through env (never the command line), so
 nothing anyone types can run as a command:
-    ED_ACTION   "capo", "chord" or "revert"
+    ED_ACTION   "capo", "chord", "text" or "revert"
     ED_HYMN     hymn number
     ED_CAPO     0..7                         (capo)
     ED_CI       chord index (data-ci)        (chord)
     ED_FROM     chord as the page saw it     (chord, the guard)
     ED_TO       new chord to write           (chord)
+    ED_OFFSET   characters to slide it       (chord, optional)
+    ED_TEXT     the whole new hymn file      (text)
+    ED_BASE     sha256 of the file the page loaded (text, the guard)
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -62,6 +74,8 @@ HYMNS_DIR = HERE / "hymns"
 BRANCH = "main"
 MAX_CAPO = 7
 MAX_MOVE = 40          # most characters a chord can be nudged in one save
+MAX_TEXT = 30000       # biggest hymn file the editor will save (GitHub caps
+                       # all dispatch inputs together at 65,535 characters)
 # Who the website's saves are committed as (songedit.yml's git config).
 # Any commit NOT by this address counts as one of yours.
 BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
@@ -226,6 +240,38 @@ def set_capo(raw: str, value: int) -> str:
     return nl.join(keep)
 
 
+def normalize_text(text: str) -> str:
+    """How a hymn file is written after a text edit: \\n line endings,
+    no trailing blank lines or spaces at the very end, one final \\n.
+    SONGEDIT_JS's norm() does exactly the same, so both sides hash the
+    same bytes."""
+    return re.sub(r"\r\n?", "\n", text).rstrip(" \t\n") + "\n"
+
+
+def text_hash(text: str) -> str:
+    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
+
+
+def set_text(raw: str, text: str, base: str) -> str:
+    """Replace the whole file with `text` — only if the file is still the
+    one the page loaded (sha256 `base`, the guard)."""
+    base = (base or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", base):
+        raise ValueError("missing the page's version check, so nothing was touched.")
+    if text_hash(raw) != base:
+        raise ValueError("the song changed since the page loaded (another save landed "
+                         "first), so nothing was touched. Her edit is still saved on "
+                         "her device; reloading the page offers it back.")
+    new = normalize_text(text)
+    if len(new) > MAX_TEXT:
+        raise ValueError(f"the song is {len(new)} characters; the most I'll save is {MAX_TEXT}.")
+    if "\x00" in new:
+        raise ValueError("the text has a stray null character in it.")
+    if not any(ln.strip() and not META_RE.match(ln) for ln in new.split("\n")):
+        raise ValueError("the song needs at least a title line.")
+    return new
+
+
 def _git(*args: str) -> bytes:
     return subprocess.run(["git", *args], cwd=HERE, check=True,
                           capture_output=True).stdout
@@ -293,6 +339,14 @@ def _apply_from_env() -> int:
             print(f"::error::{e}")
             return 1
         what = f"chord #{cir}: [{frm}] to [{to}]" + (f", moved {off:+d}" if off else "")
+    elif action == "text":
+        try:
+            new = set_text(raw, os.environ.get("ED_TEXT") or "",
+                           os.environ.get("ED_BASE") or "")
+        except ValueError as e:
+            print(f"::error::{e}")
+            return 1
+        what = "song text edited"
     elif action == "revert":
         try:
             new = original_text(path)
@@ -301,7 +355,7 @@ def _apply_from_env() -> int:
             return 1
         what = "restored to the original"
     else:
-        print('::error::Unknown action (want "capo", "chord" or "revert").')
+        print('::error::Unknown action (want "capo", "chord", "text" or "revert").')
         return 1
 
     if new == raw:
@@ -345,18 +399,23 @@ html.dark .se-pos { color: #f5f5f5; }
 .se-actions .se-cancel { width: auto; padding: 0 16px; height: 40px; font-size: 13px; }
 .se-toast {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(150px + env(safe-area-inset-bottom)); z-index: 65;
+  bottom: calc(150px + env(safe-area-inset-bottom)); z-index: 85;
   max-width: calc(100% - 32px);
   background: #0a0a0a; color: #f2ede4; padding: 10px 16px;
   font-family: 'Special Elite', 'Courier New', monospace; font-size: 12px;
   line-height: 1.4; box-shadow: 4px 4px 0 #f01a8b;
 }
 .se-toast[hidden] { display: none; }
-/* Restore original: moved above the PREV / INDEX / NEXT row by the
-   script, where the fixed control bar can't cover it. Outlined, not
-   pink, so it doesn't look like an everyday button. */
-.se-revertwrap { margin-top: 26px; text-align: right; }
-.se-revertwrap[hidden] { display: none; }
+/* Edit song + Restore original: moved above the PREV / INDEX / NEXT
+   row by the script, where the fixed control bar can't cover them.
+   Restore is outlined, not pink, so it doesn't look like an everyday
+   button. */
+.se-tools {
+  margin-top: 26px; display: flex; justify-content: flex-end;
+  align-items: center; flex-wrap: wrap; gap: 12px;
+}
+.se-tools[hidden] { display: none; }
+.se-editbtn { border: 0; cursor: pointer; touch-action: manipulation; }
 .se-revert {
   font-family: 'Special Elite', 'Courier New', monospace; font-size: 11px;
   letter-spacing: 1.5px; text-transform: uppercase;
@@ -367,7 +426,57 @@ html.dark .se-pos { color: #f5f5f5; }
 .se-revert:active { transform: translateY(1px); }
 .se-revert:disabled { opacity: 0.45; cursor: default; }
 html.dark .se-revert { border-color: #f5f5f5; color: #f5f5f5; }
-.se-toast, .se-toast *, .se-modal, .se-modal *, .se-revertwrap, .se-revertwrap * {
+
+/* Full-screen plain-text editor. */
+.se-text {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; flex-direction: column; gap: 8px;
+  background: #f2ede4;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+}
+.se-text[hidden] { display: none; }
+.se-text > * { width: 100%; max-width: 48rem; margin: 0 auto; }
+.se-text-head { display: flex; align-items: center; justify-content: space-between; }
+.se-draft {
+  display: flex; align-items: center; gap: 10px;
+  background: #f01a8b; color: #0a0a0a; padding: 8px 10px;
+  font-family: 'Special Elite', 'Courier New', monospace; font-size: 12px; line-height: 1.4;
+}
+.se-draft[hidden] { display: none; }
+.se-draft span { flex: 1; }
+.se-draft .p-btn { flex-shrink: 0; height: 32px; }
+.se-help {
+  font-family: 'Special Elite', 'Courier New', monospace; font-size: 12px;
+  line-height: 1.5; color: #0a0a0a;
+}
+.se-help summary { cursor: pointer; color: #f01a8b; letter-spacing: 1px; }
+.se-help ul { margin: 6px 0 2px; padding-left: 20px; }
+.se-help code { font-family: inherit; color: #f01a8b; }
+.se-ta {
+  flex: 1; min-height: 0; resize: none;
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 16px;            /* 16px+ keeps iPhones from zooming in */
+  line-height: 1.55;
+  padding: 10px 12px;
+  border: 3px solid #0a0a0a; border-radius: 0;
+  background: #fffdf8; color: #0a0a0a;
+  -webkit-appearance: none; appearance: none;
+}
+.se-ta:focus { outline: 3px solid #f01a8b; outline-offset: 0; }
+.se-text-foot { display: flex; align-items: center; gap: 10px; }
+.se-text-status {
+  flex: 1; font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 12px; line-height: 1.4; color: #0a0a0a;
+}
+.se-text-foot .se-cancel { width: auto; padding: 0 16px; height: 40px; font-size: 13px; }
+html.dark .se-text { background: #000000; }
+html.dark .se-ta { background: #0d0d0d; color: #f5f5f5; border-color: #f5f5f5; }
+html.dark .se-help, html.dark .se-text-status { color: #f5f5f5; }
+html.dark .se-text .listen-x { border-color: #f5f5f5; color: #f5f5f5; }
+html.dark .se-text .listen-play { background: #f5f5f5; color: #000000; border-color: #f5f5f5; }
+
+.se-toast, .se-toast *, .se-modal, .se-modal *, .se-tools, .se-tools *,
+.se-text, .se-text * {
   -webkit-text-stroke-width: 0 !important;
   -webkit-text-stroke-color: transparent !important;
   paint-order: normal !important;
@@ -455,6 +564,7 @@ SONGEDIT_JS = r"""
         var v = capo;
         dispatch({ action: 'capo', hymn: num, capo: String(v) })
           .then(function () {
+            fileChanged = true;
             toast((v === 0 ? 'Capo off' : 'Capo ' + v) +
                   ' — everyone sees it after the site rebuilds (about a minute).');
           })
@@ -469,24 +579,33 @@ SONGEDIT_JS = r"""
   };
   showCapo();
 
+  // After any save, the text editor's copy of the song is out of date
+  // (its save would be refused), so it asks for a reload first. After a
+  // text save or a restore, the chord positions are out of date too.
+  var fileChanged = false, chordsStale = false;
+
+  /* ── Edit song / Restore original row ─────────────────────── */
+  var tools = $('se-tools');
+  if (canSave && tools) {
+    var foot = document.querySelector('nav.foot');
+    if (foot) foot.parentNode.insertBefore(tools, foot);
+    tools.hidden = false;
+  }
+
   /* ── Restore original (only when it can save) ─────────────
      Puts the hymn file back the way the site owner last saved it
      (songedit.py original_text), undoing every website edit. */
-  var reverted = false;               // chord data-ci are stale after this
-  var revWrap = $('se-revertwrap'), revBtn = $('se-revert');
-  if (canSave && revWrap && revBtn) {
-    var foot = document.querySelector('nav.foot');
-    if (foot) foot.parentNode.insertBefore(revWrap, foot);
-    revWrap.hidden = false;
+  var revBtn = $('se-revert');
+  if (canSave && revBtn) {
     revBtn.onclick = function () {
       if (!confirm('Put song #' + num + ' back to the original?\n\n' +
-                   'This undoes every chord and capo change made from this page, ' +
+                   'This undoes every change made to it from this website, ' +
                    'for everyone.')) return;
       revBtn.disabled = true;
       toast('Restoring the original…');
       dispatch({ action: 'revert', hymn: num })
         .then(function () {
-          reverted = true;
+          fileChanged = chordsStale = true;
           toast('Restored — reload in a minute or two to see the original.');
         })
         .catch(function (err) {
@@ -494,6 +613,129 @@ SONGEDIT_JS = r"""
           toast('Didn’t restore' + (err && err.status ? ' (' + err.status + ')' : '') +
                 '. Try again in a moment.');
         });
+    };
+  }
+
+  /* ── Edit the whole song as text (only when it can save) ──────
+     The textarea holds the hymn file exactly as it is in the songbook.
+     Save sends the new text plus a fingerprint (sha256) of the text the
+     page loaded; the Action refuses if the file changed in between.
+     Her edit is kept on this device as a draft (autosaved while she
+     types) until a reloaded page shows it made it in, so a refused or
+     interrupted save is never lost — the editor offers "Load it". */
+  var tx = $('se-text'), ta = $('se-ta');
+  if (canSave && tx && ta) {
+    var original = ta.value;
+    var maxText = parseInt(se.getAttribute('data-maxtext'), 10) || 30000;
+    var draftKey = 'gh-draft-' + num, draftTimer = 0;
+    var txStat = $('se-text-status'), txSave = $('se-text-save'), draftBar = $('se-draft');
+    var META = /^\s*\[\s*(speed|key|capo)\s*:[^\]]*\]\s*$/i;
+
+    // Same as songedit.normalize_text in Python — both hash these bytes.
+    function norm(t) { return t.replace(/\r\n?/g, '\n').replace(/[ \t\n]+$/, '') + '\n'; }
+    function sha(t) {
+      return crypto.subtle.digest('SHA-256', new TextEncoder().encode(norm(t)))
+        .then(function (b) {
+          return Array.prototype.map.call(new Uint8Array(b), function (x) {
+            return ('0' + x.toString(16)).slice(-2);
+          }).join('');
+        });
+    }
+    function readDraft() {
+      try { var d = JSON.parse(load(draftKey)); return d && d.text ? d : null; }
+      catch (e) { return null; }
+    }
+    function dropDraft() { try { localStorage.removeItem(draftKey); } catch (e) {} }
+    function keepDraft(text) { save(draftKey, JSON.stringify({ t: Date.now(), text: text })); }
+    function dirty() { return norm(ta.value) !== norm(original); }
+
+    // A draft that matches what the songbook now says = that save landed.
+    var d0 = readDraft();
+    if (d0 && norm(d0.text) === norm(original)) dropDraft();
+
+    function txOpen() {
+      if (fileChanged) {
+        toast('Reload the page first — this song was just changed.');
+        return;
+      }
+      var pb = $('ctl-play');
+      if (pb && pb.classList.contains('on')) pb.click();     // stop auto-scroll
+      var d = readDraft();
+      var pending = d && norm(d.text) !== norm(ta.value);
+      if (pending) {
+        $('se-draft-msg').textContent = 'You have an edit from ' +
+          new Date(d.t).toLocaleString([], { month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit' }) +
+          ' that isn’t on this page. If you just saved it, it may still be on its way ' +
+          '(reload in a minute) — or it didn’t go through.';
+      }
+      draftBar.hidden = !pending;
+      txStat.textContent = '';
+      txSave.disabled = false;
+      tx.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+    }
+    function txClose() {
+      tx.hidden = true;
+      document.documentElement.style.overflow = '';
+    }
+    function txCancel() {
+      if (dirty()) {
+        if (!confirm('Throw away your changes to this song?')) return;
+        ta.value = original;
+        dropDraft();
+      }
+      txClose();
+    }
+
+    $('se-edit').onclick = txOpen;
+    $('se-text-x').onclick = txCancel;
+    $('se-text-cancel').onclick = txCancel;
+    $('se-draft-load').onclick = function () {
+      var d = readDraft();
+      if (d) ta.value = d.text;
+      draftBar.hidden = true;
+    };
+    ta.addEventListener('input', function () {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(function () {
+        if (dirty()) keepDraft(ta.value);
+      }, 600);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (!tx.hidden && e.key === 'Escape') txCancel();
+    });
+
+    txSave.onclick = function () {
+      if (!dirty()) { txClose(); return; }
+      var text = norm(ta.value);
+      var hasTitle = text.split('\n').some(function (l) { return l.trim() && !META.test(l); });
+      if (!hasTitle) { txStat.textContent = 'The first line should be the song title.'; return; }
+      if (text.length > maxText) {
+        txStat.textContent = 'That’s too long to save (' + text.length + ' of ' + maxText + ' characters).';
+        return;
+      }
+      if (!(window.crypto && crypto.subtle && window.TextEncoder)) {
+        txStat.textContent = 'This browser can’t save here — open the site’s https address.';
+        return;
+      }
+      clearTimeout(draftTimer);
+      keepDraft(text);
+      txSave.disabled = true;
+      txStat.textContent = 'Saving…';
+      sha(original).then(function (base) {
+        return dispatch({ action: 'text', hymn: num, text: text, base: base });
+      }).then(function () {
+        original = text;
+        ta.value = text;
+        fileChanged = chordsStale = true;
+        txClose();
+        toast('Song saved — reload in a minute or two to see it.');
+      }).catch(function (err) {
+        txStat.textContent = 'Didn’t save' + (err && err.status ? ' (' + err.status + ')' : '') +
+                             '. Your edit is kept on this device — try again.';
+        txSave.disabled = false;
+      });
     };
   }
 
@@ -548,9 +790,9 @@ SONGEDIT_JS = r"""
 
     var curEl = null, fromChord = '', working = '';
     function open(el) {
-      // After a restore the chord positions on this page no longer match
-      // the file, so a chord save could be refused or land oddly.
-      if (reverted) { toast('Reload the page first — the song was just restored.'); return; }
+      // After a text save or restore the chord positions on this page no
+      // longer match the file, so a chord save could land on the wrong one.
+      if (chordsStale) { toast('Reload the page first — this song was just changed.'); return; }
       curEl = el;
       fromChord = el.getAttribute('data-chord');
       working = fromChord;
@@ -593,6 +835,7 @@ SONGEDIT_JS = r"""
       dispatch({ action: 'chord', hymn: num, ci: String(ci), from: fromChord,
                  to: to, offset: String(off) })
         .then(function () {
+          fileChanged = true;
           // Update every copy that shares this ci (a repeated chorus)
           // so the page matches what will come back after the rebuild.
           var twins = document.querySelectorAll('.v-body .chord[data-ci="' + ci + '"]');
@@ -615,11 +858,62 @@ SONGEDIT_JS = r"""
 """
 
 
+def _render_tools(number, raw: str | None) -> str:
+    """The Edit song / Restore original row, plus the full-screen text
+    editor (left out if the hymn file couldn't be read)."""
+    edit_btn = editor = ""
+    if raw is not None:
+        edit_btn = ('<button id="se-edit" class="foot-link se-editbtn" type="button">'
+                    '&#9998; Edit song</button>')
+        editor = (
+            '<div id="se-text" class="se-text" hidden role="dialog" aria-modal="true" '
+            'aria-label="Edit song">'
+            '<div class="se-text-head">'
+            f'<span class="listen-title">Edit song #{escape(str(number))}</span>'
+            '<button id="se-text-x" class="listen-x" type="button" aria-label="Close">&times;</button>'
+            '</div>'
+            '<div id="se-draft" class="se-draft" hidden>'
+            '<span id="se-draft-msg"></span>'
+            '<button id="se-draft-load" class="p-btn" type="button">LOAD IT</button>'
+            '</div>'
+            '<details class="se-help"><summary>How the text works</summary><ul>'
+            '<li>First line is the song title.</li>'
+            '<li><code>[G]</code> goes right before the syllable the chord lands on.</li>'
+            '<li>A blank line starts a new verse.</li>'
+            '<li>A short label alone at the top of a verse: <code>1</code>, <code>2</code>, '
+            '<code>C</code> (chorus), <code>B</code> (bridge).</li>'
+            '<li>A last verse labeled <code>Notes</code> is for musicians only.</li>'
+            '<li><code>[Speed:4]</code> <code>[Key:G]</code> <code>[Capo:3]</code> '
+            'go on their own lines under the title.</li>'
+            '<li>Made a mess? <b>Restore original</b> puts the song back.</li>'
+            '</ul></details>'
+            # The newline right after <textarea> is eaten by the browser, so
+            # a file that starts with a blank line keeps it.
+            '<textarea id="se-ta" class="se-ta" spellcheck="false" autocapitalize="off" '
+            'autocomplete="off" autocorrect="off" aria-label="Song text">\n'
+            f'{escape(raw)}</textarea>'
+            '<div class="se-text-foot">'
+            '<span id="se-text-status" class="se-text-status" role="status" aria-live="polite"></span>'
+            '<button id="se-text-cancel" class="listen-x se-cancel" type="button">Cancel</button>'
+            '<button id="se-text-save" class="listen-play" type="button">Save</button>'
+            '</div>'
+            '</div>'
+        )
+    return (
+        '<div id="se-tools" class="se-tools" hidden>'
+        f'{edit_btn}'
+        '<button id="se-revert" class="se-revert" type="button">&#8634; Restore original</button>'
+        '</div>'
+        f'{editor}'
+    )
+
+
 def render_song_editor(number, capo_meta: str = "") -> str:
-    """Chord-edit popup + the capo/chord save wiring, for the musician
-    page. Always returned (so the capo reminder works offline); the save
-    wiring only activates when PRAYER_TOKEN is set, exactly like the
-    events form's button."""
+    """Chord-edit popup, whole-song text editor, Restore original, and
+    the save wiring for all of them, for the musician page. Always
+    returned (so the capo reminder works offline); the save wiring and
+    the Edit song / Restore original buttons only appear when
+    PRAYER_TOKEN is set, exactly like the events form's button."""
     try:
         capo = int(str(capo_meta).strip())
     except (TypeError, ValueError):
@@ -628,9 +922,18 @@ def render_song_editor(number, capo_meta: str = "") -> str:
         capo = 0
     tok = _token()
     attrs = (f'data-num="{escape(str(number))}" data-capo="{capo}" '
-             f'data-branch="{escape(BRANCH)}"')
+             f'data-branch="{escape(BRANCH)}" data-maxtext="{MAX_TEXT}"')
+    tools = ""
     if tok:
         attrs += f' data-repo="{escape(_repo())}" data-t="{escape(tok[::-1])}"'
+        raw = None
+        path = find_hymn(int(number))
+        if path is not None:
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except OSError:
+                pass
+        tools = _render_tools(number, raw)
     return (
         f"<style>{SONGEDIT_CSS}</style>\n"
         f'<div id="se" {attrs}>'
@@ -660,9 +963,7 @@ def render_song_editor(number, capo_meta: str = "") -> str:
         '</div>'
         '<div id="se-status" class="listen-time" role="status" aria-live="polite"></div>'
         '</div></div>'
-        + ('<div id="se-revertwrap" class="se-revertwrap" hidden>'
-           '<button id="se-revert" class="se-revert" type="button">&#8634; Restore original</button>'
-           '</div>' if tok else '') +
+        f'{tools}' +
         '<div id="se-toast" class="se-toast" role="status" aria-live="polite" hidden></div>'
         '</div>\n'
         f"<script>{SONGEDIT_JS}</script>"
@@ -673,5 +974,5 @@ if __name__ == "__main__":
     if sys.argv[1:2] == ["set"]:
         sys.exit(_apply_from_env())
     print("Usage: python3 songedit.py set   "
-          "(reads ED_ACTION, ED_HYMN, ED_CAPO | ED_CI/ED_FROM/ED_TO)")
+          "(reads ED_ACTION, ED_HYMN, ED_CAPO | ED_CI/ED_FROM/ED_TO | ED_TEXT/ED_BASE)")
     sys.exit(2)
