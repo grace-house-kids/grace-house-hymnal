@@ -25,6 +25,15 @@ marker, the Action checks the chord still reads what the page thought it
 was (ED_FROM). If the file moved on, it refuses instead of editing the
 wrong chord. Worst case is a declined save, never a scrambled song.
 
+RESTORE ORIGINAL: the "↺ Restore original" button puts a hymn back the
+way YOU last saved it, undoing every chord/capo change made from the
+website since. Nothing extra is stored: every website save is committed
+by the Action as BOT_EMAIL, so "your original" is simply the newest
+commit of that hymn file made by anybody else (you uploading or editing
+it on GitHub, or pushing from your computer). Edit a hymn yourself and
+that becomes the new original. The Action needs the full history for
+this (fetch-depth: 0 in songedit.yml).
+
 server.py needs, in the musician branch of render_hymn_page:
     from songedit import render_song_editor
     ... render_player(...) + render_song_editor(number, meta.get("capo", "")) + ...
@@ -32,7 +41,7 @@ and META_RE widened to (speed|key|capo) so [Capo:X] is read, not shown.
 
 The Action passes everything through env (never the command line), so
 nothing anyone types can run as a command:
-    ED_ACTION   "capo" or "chord"
+    ED_ACTION   "capo", "chord" or "revert"
     ED_HYMN     hymn number
     ED_CAPO     0..7                         (capo)
     ED_CI       chord index (data-ci)        (chord)
@@ -43,6 +52,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 import sys
 from html import escape
 from pathlib import Path
@@ -52,6 +62,9 @@ HYMNS_DIR = HERE / "hymns"
 BRANCH = "main"
 MAX_CAPO = 7
 MAX_MOVE = 40          # most characters a chord can be nudged in one save
+# Who the website's saves are committed as (songedit.yml's git config).
+# Any commit NOT by this address counts as one of yours.
+BOT_EMAIL = "41898282+github-actions[bot]@users.noreply.github.com"
 
 # Kept in step with server.py. CHORD_RE matches any [..]; the real
 # chords are picked out by chord_spans() below, which excludes the same
@@ -213,6 +226,29 @@ def set_capo(raw: str, value: int) -> str:
     return nl.join(keep)
 
 
+def _git(*args: str) -> bytes:
+    return subprocess.run(["git", *args], cwd=HERE, check=True,
+                          capture_output=True).stdout
+
+
+def original_text(path: Path) -> str:
+    """The hymn file as of the newest commit to it NOT made by the
+    website (BOT_EMAIL) — i.e. the way you last saved it."""
+    if _git("rev-parse", "--is-shallow-repository").strip() == b"true":
+        raise ValueError("the Action only has the latest commit, not the history "
+                         "(songedit.yml's checkout needs fetch-depth: 0).")
+    rel = path.relative_to(HERE).as_posix()
+    log = _git("log", "--format=%H%x09%ae", "--", rel).decode("utf-8")
+    for line in log.splitlines():
+        sha, _, email = line.partition("\t")
+        if email.strip().lower() != BOT_EMAIL:
+            try:
+                return _git("show", f"{sha}:{rel}").decode("utf-8")
+            except subprocess.CalledProcessError:
+                break     # file had another name back then
+    raise ValueError(f"couldn't find your own saved version of {rel} in the history.")
+
+
 # ─────────────────────────────────────────────────────────────
 # The Action entry point ("python3 songedit.py set")
 
@@ -257,8 +293,15 @@ def _apply_from_env() -> int:
             print(f"::error::{e}")
             return 1
         what = f"chord #{cir}: [{frm}] to [{to}]" + (f", moved {off:+d}" if off else "")
+    elif action == "revert":
+        try:
+            new = original_text(path)
+        except (ValueError, subprocess.CalledProcessError) as e:
+            print(f"::error::Couldn't restore the original: {e}")
+            return 1
+        what = "restored to the original"
     else:
-        print('::error::Unknown action (want "capo" or "chord").')
+        print('::error::Unknown action (want "capo", "chord" or "revert").')
         return 1
 
     if new == raw:
@@ -309,7 +352,22 @@ html.dark .se-pos { color: #f5f5f5; }
   line-height: 1.4; box-shadow: 4px 4px 0 #f01a8b;
 }
 .se-toast[hidden] { display: none; }
-.se-toast, .se-toast *, .se-modal, .se-modal * {
+/* Restore original: moved above the PREV / INDEX / NEXT row by the
+   script, where the fixed control bar can't cover it. Outlined, not
+   pink, so it doesn't look like an everyday button. */
+.se-revertwrap { margin-top: 26px; text-align: right; }
+.se-revertwrap[hidden] { display: none; }
+.se-revert {
+  font-family: 'Special Elite', 'Courier New', monospace; font-size: 11px;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  padding: 4px 10px 5px; border: 1.5px dashed #0a0a0a; border-radius: 0;
+  background: transparent; color: #0a0a0a; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.se-revert:active { transform: translateY(1px); }
+.se-revert:disabled { opacity: 0.45; cursor: default; }
+html.dark .se-revert { border-color: #f5f5f5; color: #f5f5f5; }
+.se-toast, .se-toast *, .se-modal, .se-modal *, .se-revertwrap, .se-revertwrap * {
   -webkit-text-stroke-width: 0 !important;
   -webkit-text-stroke-color: transparent !important;
   paint-order: normal !important;
@@ -411,6 +469,34 @@ SONGEDIT_JS = r"""
   };
   showCapo();
 
+  /* ── Restore original (only when it can save) ─────────────
+     Puts the hymn file back the way the site owner last saved it
+     (songedit.py original_text), undoing every website edit. */
+  var reverted = false;               // chord data-ci are stale after this
+  var revWrap = $('se-revertwrap'), revBtn = $('se-revert');
+  if (canSave && revWrap && revBtn) {
+    var foot = document.querySelector('nav.foot');
+    if (foot) foot.parentNode.insertBefore(revWrap, foot);
+    revWrap.hidden = false;
+    revBtn.onclick = function () {
+      if (!confirm('Put song #' + num + ' back to the original?\n\n' +
+                   'This undoes every chord and capo change made from this page, ' +
+                   'for everyone.')) return;
+      revBtn.disabled = true;
+      toast('Restoring the original…');
+      dispatch({ action: 'revert', hymn: num })
+        .then(function () {
+          reverted = true;
+          toast('Restored — reload in a minute or two to see the original.');
+        })
+        .catch(function (err) {
+          revBtn.disabled = false;
+          toast('Didn’t restore' + (err && err.status ? ' (' + err.status + ')' : '') +
+                '. Try again in a moment.');
+        });
+    };
+  }
+
   /* ── Chord editing (only when it can save) ────────────────── */
   if (canSave) {
     document.documentElement.classList.add('se-on');
@@ -462,6 +548,9 @@ SONGEDIT_JS = r"""
 
     var curEl = null, fromChord = '', working = '';
     function open(el) {
+      // After a restore the chord positions on this page no longer match
+      // the file, so a chord save could be refused or land oddly.
+      if (reverted) { toast('Reload the page first — the song was just restored.'); return; }
       curEl = el;
       fromChord = el.getAttribute('data-chord');
       working = fromChord;
@@ -571,6 +660,9 @@ def render_song_editor(number, capo_meta: str = "") -> str:
         '</div>'
         '<div id="se-status" class="listen-time" role="status" aria-live="polite"></div>'
         '</div></div>'
+        + ('<div id="se-revertwrap" class="se-revertwrap" hidden>'
+           '<button id="se-revert" class="se-revert" type="button">&#8634; Restore original</button>'
+           '</div>' if tok else '') +
         '<div id="se-toast" class="se-toast" role="status" aria-live="polite" hidden></div>'
         '</div>\n'
         f"<script>{SONGEDIT_JS}</script>"
