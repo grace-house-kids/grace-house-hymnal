@@ -1,6 +1,6 @@
 # .github/workflows/songedit.yml
 #
-# Started by the chord/capo controls on a musician song page
+# Started by the chord/capo/restore controls on a musician song page
 # (songedit.py's render_song_editor). Applies one edit to a hymn file
 # (python3 songedit.py set), saves it to main, then starts "Build and
 # deploy" so it shows on the site a minute or two later.
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: capo or chord
+        description: capo, chord or revert (revert = restore the original)
         required: true
         type: string
       hymn:
@@ -60,6 +60,8 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history, so revert can find your original
 
       - name: Apply the edit to the hymn file
         env:
