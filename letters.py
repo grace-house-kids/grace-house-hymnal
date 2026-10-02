@@ -39,12 +39,18 @@ is made from line 1 ("A Letter to Grubthorn" -> a-letter-to-grubthorn).
 The address comes from the words, not from the letter's position in the
 file, so you can put new letters at the top without breaking old links.
 Two letters with the same line 1 get -2, -3 on the end.
+
+You can add letters from the page too (hidden): long-press the wheel
+in the logo on the Letters list. See letterform.py. Those go at the
+top of letters.txt.
 """
 from __future__ import annotations
 
 import re
 from html import escape
 from pathlib import Path
+
+from letterform import render_letter_form
 
 HERE = Path(__file__).resolve().parent
 LETTERS_PATH = HERE / "letters.txt"
@@ -157,7 +163,8 @@ def render_letters_index(letters) -> str:
     """The list of letters — the middle of /{key}/letters/."""
     if not letters:
         return ('<p class="ev-none">No letters yet. '
-                "Add one to letters.txt and build again.</p>")
+                "Add one to letters.txt and build again.</p>\n"
+                f"{render_letter_form()}")
     items = "\n".join(
         f'<li><a href="letters/{slug}/">'
         f'<span class="letter-mark" aria-hidden="true">&#10022;</span>'
@@ -173,6 +180,7 @@ def render_letters_index(letters) -> str:
         '<div class="dash-rule"></div>'
         '<span class="hint">↓ tap one</span>'
         "</div>\n"
+        f"{render_letter_form()}\n"
         f'<ul class="letter-list">\n{items}\n</ul>'
     )
 
