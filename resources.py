@@ -26,9 +26,23 @@ folder "02-shirt designs" is shown as "Shirt Designs" at the address
 Optional blurb: put an "about.txt" in a category folder. Its first
 line is shown as a one-line description under the category. It is not
 listed as a downloadable file.
+
+Speed drills: put a "drills.txt" in a category folder and that category
+becomes a Bible speed drill instead of a file list. Pressing New counts
+down (like the musician page's countdown before scrolling), then shows
+a random reference and starts a stopwatch; "Found it" stops the clock
+and shows the verse to check. Every verse comes up once before any
+repeats. One verse per line, # for comments:
+
+    Ephesians 2:8-9 | For by grace are ye saved through faith; ...
+    Romans 5:8                     <- text is optional
+
+Any other files in that folder are still listed for download below the
+drill. See resources/speed-drills/.
 """
 from __future__ import annotations
 
+import json
 import re
 from html import escape
 from pathlib import Path
@@ -38,7 +52,9 @@ HERE = Path(__file__).resolve().parent
 RESOURCES_DIR = HERE / "resources"
 
 # Never listed as downloadable files.
-_HIDDEN = {"about.txt", ".ds_store", "thumbs.db"}
+_HIDDEN = {"about.txt", "drills.txt", ".ds_store", "thumbs.db"}
+# Seconds of countdown before a speed-drill verse appears.
+DRILL_COUNTDOWN = 3
 # Files we show a thumbnail for instead of a type badge.
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 # Leading "01-", "02_", "3 " ... used for ordering, stripped from display.
@@ -73,6 +89,24 @@ def _human_size(n: int) -> str:
     return f"{size:.1f} GB"
 
 
+def parse_drills(path: Path) -> list[list[str]]:
+    """[[reference, text], ...] from a drills.txt ("Ref | text" per
+    line, text optional, # lines and blank lines skipped)."""
+    try:
+        raw = path.read_text(encoding="utf-8-sig")
+    except OSError:
+        return []
+    drills = []
+    for ln in raw.splitlines():
+        s = ln.strip()
+        if not s or s.startswith("#"):
+            continue
+        ref, _, text = s.partition("|")
+        if ref.strip():
+            drills.append([ref.strip(), text.strip()])
+    return drills
+
+
 def parse_resources():
     """Return [category, ...] or None if there's nothing to show.
 
@@ -82,6 +116,7 @@ def parse_resources():
         title  display name ("Shirt Designs")
         desc   one-line blurb from about.txt, or ""
         files  [file, ...]
+        drills [[reference, text], ...] from drills.txt, or []
     Each file is a dict:
         name     on-disk filename ("01-the-gospel.pdf")
         title    display title ("The Gospel")
@@ -123,7 +158,8 @@ def parse_resources():
                 "is_image": f.suffix.lower() in _IMAGE_EXTS,
                 "_order": (order, f.name.lower()),
             })
-        if not files:
+        drills = parse_drills(folder / "drills.txt")
+        if not files and not drills:
             continue
         files.sort(key=lambda d: d["_order"])
 
@@ -134,6 +170,7 @@ def parse_resources():
             "title": _titleize(slug_stem),
             "desc": desc,
             "files": files,
+            "drills": drills,
             "_order": (order, folder.name.lower()),
         })
     if not categories:
@@ -182,7 +219,10 @@ def render_resources(categories) -> str:
     items = []
     for c in categories:
         n = len(c["files"])
-        sub = c["desc"] or f"{n} file" + ("" if n == 1 else "s")
+        if c["drills"] and not c["desc"]:
+            sub = f'{len(c["drills"])} verses'
+        else:
+            sub = c["desc"] or f"{n} file" + ("" if n == 1 else "s")
         items.append(
             f'<li><a class="sec" href="resources/{quote(c["slug"])}/">'
             f'<span><span class="sec-name">{escape(c["title"])}</span>'
@@ -199,9 +239,139 @@ def render_resources(categories) -> str:
     )
     return bulletin + meta + '<ul class="sections">\n' + "\n".join(items) + "\n</ul>"
 
+def render_drill(category) -> str:
+    """A speed-drill category: the reference card, New / Found it, the
+    stopwatch and the countdown card (the musician page's .countdown /
+    .cd-box look from server.py's CSS). DRILL_JS does the rest."""
+    drills = category["drills"]
+    n = len(drills)
+    data = escape(json.dumps(drills, ensure_ascii=False))
+    meta = (
+        '<div class="meta-strip">'
+        f'<span class="count-tag">{n} verse{"" if n == 1 else "s"}</span>'
+        '<div class="dash-rule"></div>'
+        '<span class="hint">↓ tap new</span>'
+        "</div>\n"
+    )
+    desc_html = (f'<p class="res-desc">{escape(category["desc"])}</p>'
+                 if category["desc"] else "")
+    return (
+        f'<div class="title-tag"><h1>{escape(category["title"].upper())}</h1></div>\n'
+        f"{meta}{desc_html}"
+        f'<div class="drill" id="drill" data-drills="{data}" data-countdown="{DRILL_COUNTDOWN}">'
+        '<div class="drill-card">'
+        '<p class="drill-ref" id="drill-ref" aria-live="polite">Bibles closed.</p>'
+        '<p class="drill-clock" id="drill-clock">Tap New when everyone’s ready.</p>'
+        '<p class="drill-text" id="drill-text" hidden></p>'
+        "</div>"
+        '<div class="drill-btns">'
+        '<button type="button" class="drill-new" id="drill-new">New</button>'
+        '<button type="button" class="drill-found" id="drill-found" hidden>Found it</button>'
+        "</div>"
+        "</div>\n"
+        '<div id="drill-cd" class="countdown" hidden aria-live="polite">'
+        '<div class="cd-box">'
+        '<div class="cd-msg">Swords ready</div>'
+        f'<div id="drill-cd-num" class="cd-num">{DRILL_COUNTDOWN}</div>'
+        '<div class="cd-hint">tap new to skip</div>'
+        "</div></div>\n"
+        f"<script>{DRILL_JS}</script>"
+    )
+
+
+# New → countdown → random reference + stopwatch → Found it stops the
+# clock and shows the verse. A shuffled deck, so every verse comes up
+# once before any repeats (and never the same one twice in a row).
+DRILL_JS = r"""
+(function () {
+  var box = document.getElementById('drill');
+  if (!box) return;
+  var drills = [];
+  try { drills = JSON.parse(box.getAttribute('data-drills')) || []; } catch (e) {}
+  if (!drills.length) return;
+  var COUNT = parseInt(box.getAttribute('data-countdown'), 10) || 3;
+  function $(id) { return document.getElementById(id); }
+  var refEl = $('drill-ref'), clockEl = $('drill-clock'), textEl = $('drill-text');
+  var newBtn = $('drill-new'), foundBtn = $('drill-found');
+  var cd = $('drill-cd'), cdNum = $('drill-cd-num');
+
+  var deck = [], last = -1;
+  function draw() {
+    if (!deck.length) {
+      for (var i = 0; i < drills.length; i++) deck.push(i);
+      for (var j = deck.length - 1; j > 0; j--) {        // shuffle
+        var k = Math.floor(Math.random() * (j + 1)), t = deck[j]; deck[j] = deck[k]; deck[k] = t;
+      }
+      if (deck.length > 1 && deck[deck.length - 1] === last) deck.unshift(deck.pop());
+    }
+    last = deck.pop();
+    return drills[last];
+  }
+
+  var timer = 0, raf = 0, started = 0, counting = false;
+  function secs(ms) { return (ms / 1000).toFixed(1) + 's'; }
+  function tick() {
+    clockEl.textContent = secs(Date.now() - started);
+    raf = requestAnimationFrame(tick);
+  }
+  function stopClock() { cancelAnimationFrame(raf); raf = 0; }
+
+  function reveal() {
+    counting = false;
+    cd.hidden = true;
+    var d = draw();
+    refEl.textContent = d[0];
+    textEl.textContent = d[1] || '';
+    textEl.hidden = true;
+    foundBtn.hidden = false;
+    clockEl.classList.remove('done');
+    started = Date.now();
+    stopClock(); tick();
+  }
+
+  newBtn.onclick = function () {
+    clearInterval(timer);
+    stopClock();
+    if (counting) { reveal(); return; }           // tap again to skip the countdown
+    counting = true;
+    foundBtn.hidden = true;
+    textEl.hidden = true;
+    refEl.textContent = 'Bibles closed.';
+    clockEl.textContent = 'Get ready…';
+    clockEl.classList.remove('done');
+    var left = COUNT;
+    cdNum.textContent = left;
+    cd.hidden = false;
+    timer = setInterval(function () {
+      left -= 1;
+      if (left > 0) { cdNum.textContent = left; return; }
+      clearInterval(timer);
+      reveal();
+    }, 1000);
+  };
+
+  foundBtn.onclick = function () {
+    stopClock();
+    clockEl.textContent = 'Found in ' + secs(Date.now() - started);
+    clockEl.classList.add('done');
+    foundBtn.hidden = true;
+    textEl.hidden = !textEl.textContent;
+  };
+})();
+"""
+
+
 def render_resource_category(category) -> str:
     """One category: its own title tag, an optional blurb, then the
-    file list. Images get a preview; everything else a type badge."""
+    file list. Images get a preview; everything else a type badge.
+    A category with a drills.txt is a speed drill instead (render_drill),
+    with any other files listed below it."""
+    if category.get("drills"):
+        rest = ""
+        if category["files"]:
+            rest = render_resource_category({**category, "drills": [], "desc": "",
+                                             "title": "Files"})
+        return render_drill(category) + rest
     files = category["files"]
     n = len(files)
     count = f"{n} file" + ("" if n == 1 else "s")
@@ -348,8 +518,72 @@ RESOURCES_CSS = r"""
   line-height: 1.55;
 }
 
+/* ────────────────────────────────────────────────────────────
+   SPEED DRILLS — a big reference card, New / Found it, a stopwatch.
+   The countdown card is the musician page's .countdown / .cd-box.
+   ──────────────────────────────────────────────────────────── */
+.drill { margin-top: 22px; }
+.drill-card {
+  padding: 26px 18px 24px;
+  background: #f2ede4;
+  border: 3px solid #0a0a0a;
+  box-shadow: 5px 5px 0 #0a0a0a;
+  text-align: center;
+}
+.drill-ref {
+  margin: 0;
+  font-family: 'Big Shoulders Stencil Display', 'Impact', sans-serif;
+  font-weight: 900;
+  font-size: 48px;
+  line-height: 0.95;
+  text-transform: uppercase;
+  color: #0a0a0a;
+  word-break: break-word;
+}
+.drill-clock {
+  margin: 14px 0 0;
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: #3a3a3a;
+  font-variant-numeric: tabular-nums;
+}
+.drill-clock.done { color: #f01a8b; font-size: 18px; }
+.drill-text {
+  margin: 18px 0 0;
+  padding-top: 16px;
+  border-top: 1.5px dashed rgba(10, 10, 10, 0.35);
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 16px;
+  line-height: 1.6;
+  text-align: left;
+  color: #0a0a0a;
+}
+.drill-text[hidden] { display: none; }
+.drill-btns { display: flex; gap: 12px; margin-top: 18px; }
+.drill-new, .drill-found {
+  flex: 1;
+  height: 58px;
+  border: 3px solid #0a0a0a;
+  border-radius: 0;
+  font-family: 'Big Shoulders Stencil Display', 'Impact', sans-serif;
+  font-weight: 900;
+  font-size: 28px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.drill-new { background: #0a0a0a; color: #f2ede4; }
+.drill-found { background: #f01a8b; color: #0a0a0a; }
+.drill-found[hidden] { display: none; }
+.drill-new:active, .drill-found:active { transform: translateY(2px); }
+.drill-new:focus-visible, .drill-found:focus-visible { outline: 3px solid #f01a8b; outline-offset: 3px; }
+
 /* These rows have their own solid background, so kill the beige halo
    inherited from body (same reason the other chips/cards do). */
+.drill-card, .drill-card *, .drill-btns, .drill-btns *,
 .res-file, .res-file *,
 .res-icon {
   -webkit-text-stroke-width: 0 !important;
