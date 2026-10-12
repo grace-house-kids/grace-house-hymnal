@@ -1,20 +1,36 @@
-"""bulletin.py — the printable tri-fold Sunday bulletin.
+"""bulletin.py — the printable Sunday bulletin, as an 8-page booklet.
 
-Renders a two-sided, three-fold LANDSCAPE bulletin from the site's own
-files and serves it at /{key}/bulletin. Print double-sided (short-edge
-binding) and fold in thirds.
+Two sheets of Letter paper, printed double-sided in LANDSCAPE (short-edge
+binding), folded in half and nested (sheet 2 inside sheet 1), then stapled on
+the fold. Each printed side holds two 5.5 x 8.5in booklet pages, already in
+the order a folded booklet needs:
 
-Pulls at render time from: GraceHouseCover.png (repo root, embedded; the
-live "coming Sunday" date is drawn over it in the browser), who-we-are.txt
-(the "Know Grace / Live Grace / Share Grace" headline + welcome, and the
-timed order-of-service sections), prayer.txt (the prayer list, with the
-same one-month drop-off applied here at print time), zine.txt (this
-week's zine, editable on the page; long weeks spill onto the last panel),
-and bulletin-verses.txt (the back-panel verse, chosen at random).
+    sheet 1, outside   page 8 (back cover)           |  page 1 (cover)
+    sheet 1, inside    page 2 (order of service)     |  page 7 (kids activity page)
+    sheet 2, outside   page 6 (coming up + notes)    |  page 3 (prayer list)
+    sheet 2, inside    page 4 (zine)                 |  page 5 (zine)   <- center spread
 
-QR codes point at the site's zine / prayer-list / hymnal pages, worked
-out in the browser from this page's own address, so they always match the
-current access key. Everything interactive runs in the browser, so it
+Served at /{key}/bulletin. Pulls at render time from: GraceHouseCover.png
+(repo root, 5.5 x 8.5 portrait, e.g. 1650 x 2550px; embedded, with the live
+"coming Sunday" date drawn over it in the browser), who-we-are.txt (the "Know
+Grace / Live Grace / Share Grace" headline + welcome, and the timed
+order-of-service sections), prayer.txt (the prayer list, with the same
+one-month drop-off applied here at print time), zine.txt (this week's zine,
+editable on the page; it runs across the center spread and long weeks carry
+on at the top of page 6), the events list (this week's events),
+bulletin-verses.txt (the back-cover verse, chosen at random; their references
+are also the kids page's secret-code verses) and words.txt (the kids page's
+word-search themes, same file the kids sheet uses).
+
+Page 7 is a half-size kids activity page built from kids.py's own puzzle
+makers (the code, the maze, the word search), lifted out of its KIDS_JS at
+render time, so the two never drift apart. kids.py itself is unchanged.
+
+The hymnal QR sits on the back cover. The zine, prayer-list and events QR
+codes only appear when that section runs out of room, standing in for
+whatever got cut. QR codes point at the site's pages,
+worked out in the browser from this page's own address, so they always match
+the current access key. Everything interactive runs in the browser, so it
 works on the static GitHub Pages build too (JavaScript required).
 
 server.py wiring:
@@ -115,7 +131,7 @@ def _prayer_rows(prayer_data, today: datetime.date) -> str:
 
 
 def _welcome_html(who_data):
-    """(headline_html, welcome_html) for the welcome panel."""
+    """(headline_html, welcome_html) for the welcome page."""
     if not who_data:
         return "", ""
     headline, welcome, _sections = who_data
@@ -132,10 +148,11 @@ def _order_html(who_data) -> str:
     for name, time, names, body in sections:
         time_html = f'<div class="svc-time">{escape(time)}</div>' if time else ""
         tags = "".join(f'<span class="tag">{escape(n)}</span>' for n in names)
+        tags_html = f'<div class="svc-tags">{tags}</div>' if tags else ""
         text = " ".join(l.strip() for l in body if l.strip())
         blocks.append(
             '<div class="svc"><div class="svc-top"><div>'
-            f'{time_html}<h3>{escape(name)}</h3></div>{tags}</div>'
+            f'{time_html}<h3>{escape(name)}</h3></div>{tags_html}</div>'
             f'<p>{escape(text)}</p></div>'
         )
     return "\n".join(blocks)
@@ -179,15 +196,589 @@ def _events_html(events_data) -> str:
     return "\n".join(rows)
 
 
+_KID_ENGINE_START = "  function esc(s) {"
+_KID_ENGINE_END = "  /* ── The activities"
+
+
+def _kids_page(verses):
+    """(inner html, refs attr, themes attr, engine js) for page 7, built
+    from kids.py: its puzzle makers are the part of KIDS_JS between
+    "function esc" and "The activities". If kids.py is missing or those
+    markers move, page 7 says so instead of breaking the bulletin."""
+    try:
+        import kids
+        js = kids.KIDS_JS
+        a, b = js.index(_KID_ENGINE_START), js.index(_KID_ENGINE_END)
+        words_path = HERE / "words.txt"
+        words_text = words_path.read_text(encoding="utf-8") if words_path.exists() else ""
+        themes = kids.parse_word_themes(words_text) or kids.parse_word_themes(kids.STARTER_WORDS)
+        refs = [r for _t, r in verses if r] or list(kids.FALLBACK_VERSES)
+        wheel, rules = kids.SHEET_WHEEL, kids.MAZE_RULES
+    except Exception:
+        return ('<p class="kid-missing">Kids page: kids.py (or its puzzle code) '
+                'wasn\'t found next to bulletin.py.</p>', "[]", "[]", "")
+    inner = (
+        '<header class="kid-head"><div class="kid-brand"><span>Grace H</span>'
+        f'{wheel}<span>use Kids</span></div><div class="kid-kind">Activity Page</div></header>'
+        '<section class="act act-verse" data-act="verse"><div class="act-top">'
+        '<h3 class="act-label">Look it up</h3>'
+        '<p class="act-note">Crack the code, then find the verse in a Bible.</p></div>'
+        '<div class="act-body"></div></section>'
+        '<section class="act act-words" data-act="words"><div class="act-top">'
+        '<h3 class="act-label">Word search</h3><p class="ws-theme"></p></div>'
+        '<div class="act-body"></div></section>'
+        '<section class="act act-maze" data-act="maze"><div class="act-top">'
+        f'<h3 class="act-label">Maze</h3>{rules}</div>'
+        '<div class="act-body"></div></section>'
+    )
+    return (inner, escape(json.dumps(refs, ensure_ascii=False)),
+            escape(json.dumps(themes, ensure_ascii=False)), js[a:b])
+
+
 _FALLBACK_VERSE = ("For God so loved the world, that he gave his only Son, "
                    "that whoever believes in him should not perish but have "
                    "eternal life.", "John 3:16")
 
-CSS = "\n  :root{ color-scheme:light; box-sizing:border-box; --pw:3.667in; --ph:8.5in; }\n  *,*::before,*::after{ box-sizing:inherit; }\n  html,body{ margin:0; padding:0; }\n  body{ background:#5f5f5f; color:#eee; font-family:'Special Elite','Courier New',monospace; -webkit-font-smoothing:antialiased; }\n\n  .chrome{ max-width:1056px; margin:0 auto; padding:22px 18px 6px; }\n  .chrome h1{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; letter-spacing:1px; font-size:22px; margin:0 0 8px; }\n  .chrome p{ margin:0 0 14px; font-size:13px; line-height:1.55; opacity:.85; max-width:80ch; }\n  .bar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:6px; }\n  .btn{ font-family:'Special Elite',monospace; font-size:13px; letter-spacing:.5px; padding:9px 14px; border:2px solid #eee; background:transparent; color:#eee; cursor:pointer; border-radius:0; }\n  .btn.primary{ background:#eee; color:#111; }\n  .btn:active{ transform:translateY(1px); }\n  .back{ display:inline-block; text-decoration:none; margin:0 0 14px; }\n  .chk{ display:flex; align-items:center; gap:7px; font-size:13px; opacity:.9; }\n  .hint{ font-size:12px; opacity:.6; }\n  .kctl{ gap:9px; }\n  .kctl input[type=range]{ width:120px; accent-color:#eee; cursor:pointer; vertical-align:middle; }\n  .kval{ font-size:12px; opacity:.85; min-width:34px; text-align:right; }\n\n  .stage{ padding:14px 18px 60px; }\n  .sheet-wrap{ margin:0 auto 26px; }\n  .sheet-label{ max-width:1056px; margin:0 auto 6px; font-size:11px; letter-spacing:2px; text-transform:uppercase; opacity:.6; }\n\n  .sheet{ width:11in; height:8.5in; background:#fff; color:#000; display:flex; transform-origin:top left; position:relative; box-shadow:0 10px 34px rgba(0,0,0,.4); }\n  .panel{ flex:1 1 0; min-width:0; height:100%; position:relative; overflow:hidden; }\n  .fold{ position:absolute; top:0; bottom:0; width:0; border-left:1px dashed #cfcfcf; pointer-events:none; }\n  .fold.f1{ left:33.333%; } .fold.f2{ left:66.667%; }\n  .pad{ position:absolute; top:0.34in; right:0.30in; bottom:0.34in; left:0.30in; display:flex; flex-direction:column; }\n\n  .h-stencil{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; line-height:.92; color:#000; margin:0; }\n  .body{ font-family:'Special Elite','Courier New',monospace; color:#000; }\n\n  /* shared name chip (order of service + prayer) */\n  .tag{ background:#000; color:#fff; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; white-space:nowrap; }\n\n  /* QR blocks */\n  .qr-block{ display:flex; flex-direction:column; align-items:center; gap:5px; }\n  .qr-cap{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; text-transform:uppercase; }\n\n  /* ── PRAYER panel ──────────────────────────────────── */\n  .p-title{ font-size:34px; letter-spacing:.5px; }\n  .pr-list{ margin-top:12px; display:flex; flex-direction:column; flex:1; min-height:5in; }\n  .pr-row{ display:flex; align-items:center; gap:8px; min-height:27px; padding:5px 1px 6px; border-bottom:1px solid #000; }\n  .pr-req{ flex:1; min-width:0; font-family:'Special Elite',monospace; font-size:12px; line-height:1.15; }\n  .pr-chip{ font-size:12px; padding:1px 8px 2px; transform:rotate(-2deg); }\n  .pr-row:nth-child(even) .pr-chip{ transform:rotate(2deg); }\n  /* ruled write-in lines filling the leftover space */\n  .pr-fill{ flex:1; min-height:0.9in; background-color:#fff; background-image:repeating-linear-gradient(to bottom, #fff 0, #fff 26px, #000 26px, #000 27px); }\n  .qr-more-block{ margin-top:12px; }\n  .qr-more-block .qr,.qr-more-block .qr img,.qr-more-block .qr canvas{ width:80px!important; height:80px!important; }\n\n  /* ── WELCOME panel ─────────────────────────────────── */\n  .brandmark{ display:flex; align-items:center; gap:2px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:15px; letter-spacing:2px; }\n  .brandmark svg{ width:16px; height:16px; }\n  .w-head{ font-size:33px; margin:14px 0 0; }\n  .w-body{ margin:12px 0 0; }\n  .w-body p{ font-size:12px; line-height:1.5; margin:0 0 8px; }\n  .w-body p:last-child{ margin-bottom:0; }\n  .qr-hymnal-block{ margin-top:60px; }              /* moved down ~60px */\n  .qr-hymnal-block .qr,.qr-hymnal-block .qr img,.qr-hymnal-block .qr canvas{ width:84px!important; height:84px!important; }  /* ~20% smaller */\n  .verse-ref{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; font-size:26px; margin:8px 0 4px; }\n  .verse-txt{ font-size:11.5px; line-height:1.45; font-style:italic; }\n  .w-foot{ margin-top:auto; }\n\n  /* ── COVER panel ───────────────────────────────────── */\n  .cover img{ position:absolute; inset:0; width:100%; height:100%; display:block; }\n  .cover .date{ position:absolute; left:88%; top:19.36%; transform:translate(-50%,-50%) rotate(90deg); transform-origin:center; white-space:nowrap; font-family:'Nunito','Segoe UI',sans-serif; font-weight:500; font-size:21px; letter-spacing:.5px; color:#111; }\n\n  /* ── ORDER OF SERVICE panel ────────────────────────── */\n  .o-title{ font-size:30px; margin-bottom:4px; }\n  .pad-order{ justify-content:space-between; }\n  .svc{ padding:10px 0 12px; border-top:2px solid #000; }\n  .svc:first-of-type{ border-top:0; }\n  .svc-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }\n  .svc-time{ font-family:'Special Elite',monospace; font-size:12px; letter-spacing:.5px; }\n  .svc h3{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; font-size:24px; line-height:.9; margin:1px 0 0; }\n  .svc .tag{ padding:2px 8px 3px; font-size:14px; transform:rotate(3deg); }\n  .svc:nth-of-type(even) .tag{ transform:rotate(-3deg); }\n  .svc p{ font-family:'Special Elite',monospace; font-size:10.5px; line-height:1.4; margin:7px 0 0; }\n\n  /* ── ZINE (middle) + overflow (right) ──────────────── */\n  .z-title{ font-size:28px; margin-bottom:2px; }\n  .z-sub{ font-size:9px; letter-spacing:2px; text-transform:uppercase; opacity:.55; margin-bottom:6px; }\n  .z-area{ flex:1; min-height:6in; overflow:hidden; }\n  .z-over-area{ max-height:3.3in; overflow:hidden; }\n  .zine{ outline:none; }\n  .zine h4{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; font-size:1.32em; line-height:1; margin:.7em 0 .28em; }\n  .zine h4:first-child{ margin-top:0; }\n  .zine p{ font-family:'Special Elite',monospace; line-height:1.4; margin:0 0 .5em; }\n  .zine{ font-size:12.5px; }\n  .z-edit-hint{ font-size:10px; opacity:.5; margin-top:6px; }\n  .z-over-label{ font-size:9px; letter-spacing:2px; text-transform:uppercase; opacity:.45; margin-bottom:4px; }\n\n  /* ── UPLOAD (square) + zine QR ─────────────────────── */\n  .upload{ position:absolute; left:50%; top:5.19in; transform:translateX(-50%); width:2.97in; height:2.97in; border:2px dashed #000; display:flex; align-items:center; justify-content:center; text-align:center; cursor:pointer; overflow:hidden; position:relative; }\n  .upload span{ font-family:'Special Elite',monospace; font-size:11px; opacity:.55; padding:0 12px; line-height:1.5; }\n  .upload img{ width:100%; height:100%; object-fit:cover; }\n  .upload input{ display:none; }\n  .upload.has-img{ border:0; }\n  /* events block (replaces the upload square, bottom of the third panel) */\n  .bul-events{ position:absolute; left:0.30in; right:0.30in; top:5.19in; bottom:0.34in; display:flex; flex-direction:column; }\n  .be-title{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; font-size:26px; line-height:.9; margin:0 0 6px; color:#000; }\n  .be-list{ flex:1; min-height:0; overflow:hidden; }\n  .be-item{ padding:5px 0 6px; border-top:1px solid #000; }\n  .be-item:first-child{ border-top:0; }\n  .be-item[hidden]{ display:none; }\n  .be-when{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:12px; letter-spacing:.5px; text-transform:uppercase; }\n  .be-what{ font-family:'Special Elite',monospace; font-size:12px; line-height:1.25; }\n  .be-none{ font-family:'Special Elite',monospace; font-size:12px; opacity:.7; margin:6px 0 0; }\n  .qr-ev-block{ margin-top:8px; align-self:center; }\n  .qr-ev-block .qr,.qr-ev-block .qr img,.qr-ev-block .qr canvas{ width:80px!important; height:80px!important; }\n  .qr-zine-block{ margin-top:12px; }\n  .qr-zine-block .qr,.qr-zine-block .qr img,.qr-zine-block .qr canvas{ width:86px!important; height:86px!important; }\n\n  /* long-edge flip */\n  .flipwrap{ display:flex; width:100%; height:100%; }\n  .sheet.inside.flip .flipwrap{ transform:rotate(180deg); transform-origin:center; }\n\n  /* PRINT */\n  \n  @media print{\n    body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }\n    .chrome,.sheet-label{ display:none!important; }\n    .stage{ padding:0; }\n    /* Scale to fit with ZOOM, not transform. Two confirmed Safari facts drive\n       this: (1) Safari ignores @page{size} (incl. orientation), so LANDSCAPE\n       must be picked in the print dialog - the injected @page is only for\n       Chrome/Firefox; (2) transform:scale() shrinks only the PAINT, so the\n       sheet still occupied its full 11 x 8.5in in the flow - taller than the\n       printable area - and the overflow paginated onto a blank page after every\n       sheet (the 2-sheets-become-4-pages bug). CSS zoom scales the LAYOUT box\n       itself (Baseline since 2024, supported in Safari), so the sheet genuinely\n       becomes 11k x 8.5k in the flow and fits on one page. The on-screen\n       scale()'s inline transform is cancelled (transform:none) so it can't\n       multiply with zoom. Print dialog: LANDSCAPE, US Letter, 100%. If a blank\n       page ever returns on some printer, either lower --k a notch or set the\n       dialog's Scaling to ~90%. Knob: --k - raise toward 0.95 for a bigger\n       print, lower if an edge clips. */\n    :root{ --k:0.80; }\n    .sheet-wrap{ width:auto!important; height:auto!important; margin:0 auto!important;\n                 overflow:visible!important; break-inside:avoid; page-break-inside:avoid;\n                 page-break-after:always; break-after:page; }\n    .sheet-wrap:last-of-type{ page-break-after:auto; break-after:auto; }\n    .sheet{ transform:none!important; zoom:var(--k)!important;\n            margin:0 auto!important; box-shadow:none!important; }\n    .fold{ display:none; }\n    .z-sub,.z-edit-hint,.upload span,.cf-hint{ display:none!important; }\n  }\n\n.cover-fallback{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:0.4in; }\n.cf-mark{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; font-size:54px; line-height:.82; letter-spacing:1px; color:#000; }\n.cf-hint{ font-family:'Special Elite',monospace; font-size:11px; line-height:1.4; color:#b00; }\n"
+CSS = r"""
+  :root{ color-scheme:light; box-sizing:border-box; }
+  *,*::before,*::after{ box-sizing:inherit; }
+  html,body{ margin:0; padding:0; }
+  body{ background:#5f5f5f; color:#eee; font-family:'Special Elite','Courier New',monospace; -webkit-font-smoothing:antialiased; }
 
-JS = '/* Printing: ask for landscape Letter, but never set an @page margin \\u2014 Safari\n   and every iOS browser shove the whole sheet up and clip it when a page margin\n   is set (the trap the kids sheet hit). The print CSS zooms the sheet to fit\n   inside the printer\'s own margins instead. */\n(function(){\n  var pr=document.createElement(\'style\');\n  pr.textContent=\'@page{ size:11in 8.5in; }\';\n  document.head.appendChild(pr);\n  window.addEventListener(\'beforeprint\',function(){ try{window.scrollTo(0,0);}catch(e){} });\n})();\n\n\n    var KEY=\'__KEY__\';\n    var loc=document.location.href.split(\'#\')[0].split(\'?\')[0];\n    var i=loc.indexOf(\'/\'+KEY+\'/\');\n    var ROOT=(i>=0)?loc.slice(0,i+KEY.length+2):loc.replace(/[^/]*$/,\'\');\n    var ZINE_URL=ROOT+\'zine/\', PRAYER_URL=ROOT+\'prayer-list/\', HYMNAL_URL=ROOT+\'hymnal/\', EVENTS_URL=ROOT+\'events/\';\n    var _bl=document.getElementById("bulletin-back"); if(_bl) _bl.href=ROOT+"resources/";\n\n    (function(){\n      var M=[\'January\',\'February\',\'March\',\'April\',\'May\',\'June\',\'July\',\'August\',\'September\',\'October\',\'November\',\'December\'];\n      var n=new Date(), add=(7-n.getDay())%7;\n      var s=new Date(n.getFullYear(),n.getMonth(),n.getDate()+add);\n      var t=M[s.getMonth()]+\' \'+s.getDate();\n      document.querySelectorAll(\'.cover [data-date]\').forEach(function(e){e.textContent=t;});\n    })();\n\n    /* random back-page verse (from bulletin-verses.txt) */\n    (function(){\n      var VERSES=__VERSES_JSON__;\n      var v=VERSES[Math.floor(Math.random()*VERSES.length)];\n      document.getElementById(\'v-ref\').textContent=v.ref;\n      document.getElementById(\'v-txt\').textContent=\'\\u201C\'+v.text+\'\\u201D\';\n    })();\n\n    function qr(id,url,size){ try{ new QRCode(document.getElementById(id),{text:url,width:size,height:size,correctLevel:QRCode.CorrectLevel.M}); }catch(e){} }\n    function makeQRs(){ qr(\'qr-more\',PRAYER_URL,80); qr(\'qr-hymnal\',HYMNAL_URL,84); qr(\'qr-zine\',ZINE_URL,86); qr(\'qr-events\',EVENTS_URL,80); }\n    if(window.QRCode) makeQRs(); else window.addEventListener(\'load\',makeQRs);\n\n    /* zine flows middle -> right overflow panel */\n    var zine=document.getElementById(\'zine\'), over=document.getElementById(\'zine-over\');\n    var midArea=document.querySelector(\'.z-area\');\n    var ZINE_DEFAULT=zine.innerHTML;\n    /* Fill the middle panel completely, then spill the rest to the right. Moves\n       whole blocks first; when the next block only partly fits, it SPLITS that\n       paragraph at a word boundary so the left column fills to the bottom and\n       the remainder continues on the right. A heading is kept with at least the\n       first line of its paragraph so it never strands alone. */\n    function flowZine(){\n      var H=midArea.clientHeight;\n      /* 1) pull everything back and undo any earlier split */\n      while(over.firstChild) zine.appendChild(over.firstChild);\n      var hd=zine.querySelector("[data-frag=head]");\n      if(hd){\n        var tl=hd.nextElementSibling;\n        if(tl && tl.getAttribute("data-frag")==="tail" && tl.tagName===hd.tagName){\n          hd.textContent=(hd.textContent.trim()+" "+tl.textContent.trim()).trim();\n          tl.parentNode.removeChild(tl);\n        }\n        hd.removeAttribute("data-frag");\n      }\n      var st=zine.querySelector("[data-frag=tail]"); if(st) st.removeAttribute("data-frag");\n      /* 2) all fits? done */\n      if(zine.scrollHeight<=H) return;\n      /* 3) move whole trailing blocks out until the middle fits */\n      var guard=0;\n      while(zine.children.length>1 && zine.scrollHeight>H && guard<400){\n        over.insertBefore(zine.lastElementChild, over.firstChild); guard++;\n      }\n      /* 4) fill the leftover gap by splitting the next block across the fold */\n      var cand=over.firstElementChild, movedHeading=null;\n      if(cand && cand.tagName==="H4"){\n        zine.appendChild(cand);\n        if(zine.scrollHeight>H){ over.insertBefore(cand, over.firstChild); return; }\n        movedHeading=cand; cand=over.firstElementChild;\n      }\n      if(cand && cand.tagName==="P"){\n        var words=(cand.textContent||"").trim().split(" ").filter(Boolean);\n        if(words.length>1){\n          var hp=document.createElement("p");\n          hp.setAttribute("data-frag","head");\n          zine.appendChild(hp);\n          var lo=1, hi=words.length-1, best=0;\n          while(lo<=hi){ var m=(lo+hi)>>1; hp.textContent=words.slice(0,m).join(" "); if(zine.scrollHeight<=H){ best=m; lo=m+1; } else { hi=m-1; } }\n          if(best>0){\n            hp.textContent=words.slice(0,best).join(" ");\n            cand.textContent=words.slice(best).join(" ");\n            cand.setAttribute("data-frag","tail");\n          } else {\n            zine.removeChild(hp);\n            if(movedHeading) over.insertBefore(movedHeading, over.firstChild);\n          }\n        } else if(movedHeading){ over.insertBefore(movedHeading, over.firstChild); }\n      } else if(movedHeading){ over.insertBefore(movedHeading, over.firstChild); }\n    }\n    function resetZine(){ zine.innerHTML=ZINE_DEFAULT; flowZine(); }\n    var t; zine.addEventListener(\'input\',function(){ clearTimeout(t); t=setTimeout(flowZine,350); });\n\n    /* Events: show only those from the coming Sunday (the cover date) up to,\n       but not including, the next Sunday. ISO date strings compare directly. */\n    (function(){\n      var box=document.getElementById("be-list"); if(!box) return;\n      var n=new Date(), add=(7-n.getDay())%7;\n      var start=new Date(n.getFullYear(),n.getMonth(),n.getDate()+add);\n      var end=new Date(start.getFullYear(),start.getMonth(),start.getDate()+7);\n      function k(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }\n      var s=k(start), e=k(end), shown=0;\n      var items=box.querySelectorAll(".be-item");\n      for(var i=0;i<items.length;i++){\n        var d=items[i].getAttribute("data-when");\n        var inWin=(d>=s && d<e);\n        items[i].hidden=!inWin; if(inWin) shown++;\n      }\n      /* Nothing this week? Scan forward from the cover Sunday to the next event\n         (never earlier than the cover Sunday; rows are in date order). */\n      if(shown===0){\n        for(var j=0;j<items.length;j++){\n          if(items[j].getAttribute("data-when")>=s){ items[j].hidden=false; shown=1; break; }\n        }\n      }\n      var none=document.getElementById("be-none"); if(none) none.hidden=shown>0;\n      var ttl=document.getElementById("be-title");\n      if(ttl && shown>0) ttl.textContent = (function(){\n        /* label the fallback so it does not read as this week */\n        for(var j=0;j<items.length;j++){ if(!items[j].hidden){ return items[j].getAttribute("data-when")<e ? "Coming Up" : "Next Up"; } }\n        return "Coming Up";\n      })();\n    })();\n\n    document.getElementById(\'flip\').addEventListener(\'change\',function(e){\n      document.getElementById(\'sheet2\').classList.toggle(\'flip\',e.target.checked);\n    });\n\n    /* Print-size slider -> live --k. Set inline on <html>, which beats the\n       @media print :root{--k} default, so the dialog needs no fiddling. */\n    (function(){\n      var KKEY="gh-bulletin-k";\n      var slider=document.getElementById("ksize"), out=document.getElementById("kval");\n      function apply(v){\n        v=Math.max(0.70,Math.min(0.98,parseFloat(v)||0.80));\n        document.documentElement.style.setProperty("--k",String(v));\n        if(out) out.textContent=Math.round(v/0.80*100)+"%";\n        if(slider) slider.value=v;\n      }\n      var saved=null; try{ saved=localStorage.getItem(KKEY); }catch(e){}\n      apply(saved!=null?saved:0.80);\n      if(slider) slider.addEventListener("input",function(){\n        apply(slider.value);\n        try{ localStorage.setItem(KKEY,slider.value); }catch(e){}\n      });\n    })();\n\n    function scale(){\n      var avail=document.querySelector(\'.stage\').clientWidth;\n      var s=Math.min(1, avail/(11*96));\n      document.querySelectorAll(\'.sheet\').forEach(function(sh){ sh.style.transform=\'scale(\'+s+\')\'; });\n      document.querySelectorAll(\'.sheet-wrap\').forEach(function(w){ w.style.height=(8.5*96*s)+\'px\'; w.style.width=(11*96*s)+\'px\'; });\n    }\n    window.addEventListener(\'resize\',function(){ scale(); flowZine(); });\n    if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(function(){ scale(); flowZine(); }); }\n    window.addEventListener(\'load\',function(){ scale(); flowZine(); setTimeout(function(){ scale(); flowZine(); },400); });\n  '
+  .chrome{ max-width:1056px; margin:0 auto; padding:22px 18px 6px; }
+  .chrome h1{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; letter-spacing:1px; font-size:22px; margin:0 0 8px; }
+  .chrome p{ margin:0 0 14px; font-size:13px; line-height:1.55; opacity:.85; max-width:80ch; }
+  .bar{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:6px; }
+  .btn{ font-family:'Special Elite',monospace; font-size:13px; letter-spacing:.5px; padding:9px 14px; border:2px solid #eee; background:transparent; color:#eee; cursor:pointer; border-radius:0; }
+  .btn.primary{ background:#eee; color:#111; }
+  .btn:active{ transform:translateY(1px); }
+  .back{ display:inline-block; text-decoration:none; margin:0 0 14px; }
+  .chk{ display:flex; align-items:center; gap:7px; font-size:13px; opacity:.9; }
+  .hint{ font-size:12px; opacity:.6; }
+  .warn{ font-size:12px; color:#ffc4b8; }
 
-BODY = '  <div class="chrome">\n    <a class="btn back" id="bulletin-back" href="../resources/">&larr; Resources</a>\n    <h1>Grace House — Sunday bulletin</h1>\n    <p>Edit the zine (click it and type) &mdash; long weeks spill onto the last panel on their own. This week&rsquo;s events fill in under the zine automatically. Then Print: <b>Landscape, double-sided, Short-edge binding</b>, 100%. Long-edge printer? Tick the box so the back lines up.</p>\n    <div class="bar">\n      <button class="btn primary" onclick="window.print()">Print</button>\n      <label class="chk"><input type="checkbox" id="flip"> My printer flips on the long edge</label>\n      <label class="chk kctl" title="Shrinks the printout so it fits on one page. Raise it until an edge clips; lower it if a blank page appears.">Print size <input type="range" id="ksize" min="0.70" max="0.98" step="0.01" value="0.80"> <span class="kval" id="kval">100%</span></label>\n      <button class="btn" onclick="resetZine()">Reset zine text</button>\n      <span class="hint">Two pages = the two sides of one sheet.</span>\n    </div>\n  </div>\n\n  <div class="stage">\n    <div class="sheet-label">Sheet 1 — outside (prints first)</div>\n    <div class="sheet-wrap"><div class="sheet outside" id="sheet1">\n      <div class="fold f1"></div><div class="fold f2"></div>\n\n      <div class="panel"><div class="pad">\n        <h2 class="h-stencil p-title">Prayer List</h2>\n        <div class="pr-list">\n          __PRAYER_ROWS__\n          <div class="pr-fill"></div>\n        </div>\n        <div class="qr-block qr-more-block">\n          <div class="qr" id="qr-more"></div>\n          <div class="qr-cap">More</div>\n        </div>\n      </div></div>\n\n      <div class="panel"><div class="pad">\n        <div class="brandmark">GRACE&nbsp;H<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="43" fill="none" stroke="#000" stroke-width="6.5"/><g stroke="#000" stroke-width="5.5"><line x1="50" y1="7" x2="50" y2="93"/><line x1="7" y1="50" x2="93" y2="50"/><line x1="19.6" y1="19.6" x2="80.4" y2="80.4"/><line x1="80.4" y1="19.6" x2="19.6" y2="80.4"/></g><circle cx="50" cy="50" r="7.5" fill="#000"/></svg>USE</div>\n        <h2 class="h-stencil w-head">__HEAD__</h2>\n        <div class="w-body">__WELCOME__</div>\n        <div class="qr-block qr-hymnal-block">\n          <div class="qr" id="qr-hymnal"></div>\n          <div class="qr-cap">Hymnal</div>\n        </div>\n        <div class="w-foot">\n          <div class="verse-ref" id="v-ref">__V_REF__</div>\n          <p class="verse-txt" id="v-txt">__V_TXT__</p>\n        </div>\n      </div></div>\n\n      <div class="panel cover">\n        __COVER_INNER__\n        <span class="date" data-date>September 20</span>\n      </div>\n    </div></div>\n\n    <div class="sheet-label">Sheet 2 — inside (prints on the back)</div>\n    <div class="sheet-wrap"><div class="sheet inside" id="sheet2"><div class="flipwrap">\n      <div class="fold f1"></div><div class="fold f2"></div>\n\n      <div class="panel"><div class="pad pad-order">\n        __ORDER__\n      </div></div>\n\n      <div class="panel"><div class="pad">\n        <h2 class="h-stencil z-title">__ZINE_TITLE__</h2>\n        <div class="z-sub">tap to edit</div>\n        <div class="z-area"><div class="zine" id="zine" contenteditable="true">__ZINE__</div></div>\n        <div class="z-edit-hint">Overflow spills onto the next panel &rarr;</div>\n      </div></div>\n\n      <div class="panel">\n        <div class="pad">\n          <div class="z-over-area"><div class="zine" id="zine-over"></div></div>\n          <div class="qr-block qr-zine-block">\n            <div class="qr" id="qr-zine"></div>\n            <div class="qr-cap">See what you&rsquo;re missing</div>\n          </div>\n        </div>\n        <div class="bul-events" id="bul-events">\n          <h3 class="be-title" id="be-title">Coming Up</h3>\n          <div class="be-list" id="be-list">__EVENTS__</div>\n          <p class="be-none" id="be-none" hidden>Nothing coming up, what&rsquo;s up?</p>\n          <div class="qr-block qr-ev-block">\n            <div class="qr" id="qr-events"></div>\n            <div class="qr-cap">All events</div>\n          </div>\n        </div>\n      </div>\n    </div></div></div>\n  </div>'
+  .stage{ padding:14px 18px 60px; }
+  .sheet-wrap{ margin:0 auto 26px; }
+  .sheet-label{ max-width:1056px; margin:0 auto 6px; font-size:11px; letter-spacing:2px; text-transform:uppercase; opacity:.6; }
+
+  /* one printed side = two 5.5 x 8.5in booklet pages; it folds down the middle */
+  .sheet{ width:11in; height:8.5in; background:#fff; color:#000; transform-origin:top left; position:relative; box-shadow:0 10px 34px rgba(0,0,0,.4); }
+  .flipwrap{ position:relative; display:flex; width:100%; height:100%; }
+  .page{ flex:0 0 5.5in; height:100%; position:relative; overflow:hidden; }
+  .fold{ position:absolute; top:0; bottom:0; left:50%; width:0; border-left:1px dashed #cfcfcf; pointer-events:none; }
+  .pad{ position:absolute; top:0.5in; right:0.5in; bottom:0.5in; left:0.5in; display:flex; flex-direction:column; }
+  /* long-edge printers: the backs (sheet insides) print upside down */
+  .sheet.backside.flip .flipwrap{ transform:rotate(180deg); transform-origin:center; }
+
+  .h-stencil{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; line-height:.92; color:#000; margin:0; }
+
+  /* shared name chip (order of service + prayer) */
+  .tag{ background:#000; color:#fff; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; white-space:nowrap; }
+
+  .brandmark{ display:flex; align-items:center; gap:2px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:15px; letter-spacing:2px; color:#000; }
+  .brandmark svg{ width:16px; height:16px; }
+
+  /* ── PAGE 1 · COVER ────────────────────────────────── */
+  .cover img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+  /* the date reads up the cover's rule, at its top end, mirroring SADIEVILLE at its foot */
+  .cover .date{ position:absolute; left:46.1%; top:13.1%; transform:translateX(-50%) rotate(180deg); writing-mode:vertical-rl; white-space:nowrap; font-family:'Montserrat','Segoe UI',sans-serif; font-weight:400; font-size:21px; line-height:1; letter-spacing:.5px; text-transform:uppercase; color:#000; }
+  .cover-fallback{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:0.4in; }
+  .cf-mark{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; font-size:72px; line-height:.82; letter-spacing:1px; color:#000; }
+  .cf-hint{ font-family:'Special Elite',monospace; font-size:11px; line-height:1.4; color:#b00; }
+
+  /* ── PAGE 2 · ORDER OF SERVICE ─────────────────────── */
+  /* sized in em off the page's font-size, which the script lowers a step at a
+     time if a long order of service would run off the bottom */
+  .pad-order{ justify-content:space-between; font-size:12px; }
+  .svc{ padding:.9em 0 1em; border-top:2px solid #000; }
+  .svc:first-of-type{ border-top:0; padding-top:0; }
+  .svc-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .svc-tags{ display:flex; flex-wrap:wrap; justify-content:flex-end; gap:6px; }
+  .svc-time{ font-family:'Special Elite',monospace; font-size:1.08em; letter-spacing:.5px; }
+  .svc h3{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; font-size:2.4em; line-height:.9; margin:2px 0 0; }
+  .svc .tag{ padding:2px 9px 3px; font-size:1.2em; transform:rotate(3deg); }
+  .svc:nth-of-type(even) .tag{ transform:rotate(-3deg); }
+  .svc p{ font-family:'Special Elite',monospace; font-size:1em; line-height:1.45; margin:.6em 0 0; }
+
+  /* ── PAGES 4–5 · ZINE (the center spread) ──────────── */
+  /* page 4, then page 5, then page 6 are filled in turn by the script (CSS
+     columns can't do it: Safari prints only the first column) */
+  .z-title{ font-size:36px; margin:0 0 12px; }
+  .z-area{ flex:1; min-height:0; overflow:hidden; }
+  .z-hint{ position:absolute; top:0.2in; left:0.5in; font-size:9px; letter-spacing:2px; text-transform:uppercase; opacity:.55; pointer-events:none; }
+  .zine{ outline:none; font-size:13px; }
+  .zine h4{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; text-transform:uppercase; font-size:1.4em; line-height:1; margin:.75em 0 .3em; }
+  .zine h4:first-child{ margin-top:0; }
+  .zine p{ font-family:'Special Elite',monospace; line-height:1.45; margin:0 0 .55em; }
+  .zine ul{ font-family:'Special Elite',monospace; line-height:1.45; margin:0 0 .55em; padding-left:1.2em; }
+
+  /* ── PAGE 6 · ZINE CARRY-OVER + COMING UP + NOTES ──── */
+  .z-over{ margin-bottom:20px; }
+  .z-over-label{ font-size:9px; letter-spacing:2px; text-transform:uppercase; opacity:.55; margin-bottom:6px; }
+  /* fixed shares of page 6, so a long zine and a busy week can't squeeze each other out */
+  .z-over-area{ max-height:2.2in; overflow:hidden; }
+  .be-title{ font-size:36px; margin:0 0 8px; }
+  .be-list{ flex-shrink:0; max-height:2.6in; overflow:hidden; }
+  .be-item{ display:flex; align-items:baseline; gap:12px; padding:7px 0 8px; border-top:1px solid #000; }
+  .be-item:first-child{ border-top:0; }
+  .be-item[hidden]{ display:none; }
+  .be-when{ flex:0 0 1.05in; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:15px; letter-spacing:.5px; text-transform:uppercase; }
+  .be-what{ font-family:'Special Elite',monospace; font-size:13px; line-height:1.3; }
+  .be-none{ font-family:'Special Elite',monospace; font-size:13px; opacity:.7; margin:6px 0 0; }
+  .notes-title{ font-size:26px; margin:24px 0 2px; }
+  /* ruled lines filling the rest of the page */
+  .notes-lines{ flex:1; min-height:0; background-color:#fff; background-image:repeating-linear-gradient(to bottom, #fff 0, #fff 29px, #000 29px, #000 30px); }
+
+  /* ── PAGE 3 · PRAYER LIST ──────────────────────────── */
+  .p-title{ font-size:44px; letter-spacing:.5px; }
+  .pr-list{ margin-top:14px; display:flex; flex-direction:column; flex:1; min-height:0; overflow:hidden; }
+  .pr-row{ display:flex; align-items:center; gap:10px; min-height:30px; padding:6px 1px 7px; border-bottom:1px solid #000; }
+  .pr-req{ flex:1; min-width:0; font-family:'Special Elite',monospace; font-size:13px; line-height:1.2; }
+  .pr-chip{ font-size:13px; padding:1px 8px 2px; transform:rotate(-2deg); }
+  .pr-row:nth-child(even) .pr-chip{ transform:rotate(2deg); }
+  /* ruled write-in lines filling the leftover space */
+  .pr-fill{ flex:1; min-height:0.9in; background-color:#fff; background-image:repeating-linear-gradient(to bottom, #fff 0, #fff 29px, #000 29px, #000 30px); }
+
+  /* QR codes: the hymnal one on the back cover, and the ones that stand in
+     for whatever didn't fit (zine, prayer list, events) */
+  .verse-ref{ font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; font-size:36px; line-height:.95; margin:0 0 10px; }
+  .verse-txt{ font-size:14px; line-height:1.5; font-style:italic; margin:0; }
+  .qr-block{ display:flex; flex-direction:column; align-items:center; gap:6px; }
+  .qr,.qr img,.qr canvas{ width:1.05in!important; height:1.05in!important; }
+  .qr-cap{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; text-transform:uppercase; }
+  .more-qr{ display:flex; align-items:center; gap:0.14in; margin-top:10px; }
+  .more-qr[hidden]{ display:none; }
+  .more-qr .qr,.more-qr .qr img,.more-qr .qr canvas{ width:0.8in!important; height:0.8in!important; }
+  .more-qr .qr-cap{ font-size:15px; line-height:1.15; }
+  .pr-row.cut,.be-item.cut{ display:none; }
+
+  /* ── PAGE 7 · KIDS: kids.py's puzzles at half size, in its look ── */
+  .kidp{ gap:0.13in; color:#0a0a0a; }
+  .kid-head{ display:flex; align-items:center; gap:0.16in; }
+  .kid-brand{ display:flex; align-items:center; font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:900; font-size:27pt; line-height:.85; letter-spacing:-.5px; text-transform:uppercase; white-space:nowrap; }
+  .kid-brand .sh-wheel{ width:.77em; height:.77em; margin:0 -.02em 0 -.04em; flex-shrink:0; }
+  .kid-kind{ padding:2px 8px 3px; background:#0a0a0a; color:#fff; font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:800; font-size:11pt; line-height:1; letter-spacing:2.5px; text-transform:uppercase; transform:rotate(-1.5deg); }
+  .kidp .act{ position:relative; display:flex; flex-direction:column; min-height:0; padding:0.1in 0.12in 0.12in; border:2px solid #0a0a0a; }
+  .kidp .act-top{ display:flex; align-items:center; gap:0.12in; margin-bottom:0.1in; }
+  .kidp .act-label{ flex-shrink:0; margin:0; padding:3px 7px 4px; background:#0a0a0a; color:#fff; font-family:'Big Shoulders Stencil Display','Impact',sans-serif; font-weight:800; font-size:11.5pt; line-height:1; letter-spacing:2px; text-transform:uppercase; transform:rotate(-1.5deg); }
+  .kidp .act-body{ position:relative; flex:1; min-height:0; }
+  .kidp .act-verse .act-body{ flex:none; display:flex; flex-direction:column; align-items:flex-start; gap:0.12in; }
+  .kidp .act-words{ flex:0 0 2.3in; }
+  .kidp .act-maze{ flex:1; }
+  .kidp .act-note{ margin:0; font-size:9pt; line-height:1.3; }
+  .kid-missing{ margin:auto 0; font-size:12px; color:#b00; }
+  @media screen{ .kidp .act[data-act]{ cursor:pointer; } .kidp .act[data-act]:hover{ outline:2px dashed #888; outline-offset:2px; } }
+  /* the pieces kids.py's makers draw (same as on the kids sheet, a touch smaller) */
+  .cs{ display:block; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; overflow:visible; }
+  .cs .f{ fill:currentColor; }
+  .code-msg{ display:flex; flex-wrap:wrap; align-items:flex-end; column-gap:0.18in; row-gap:0.1in; }
+  .cw{ display:flex; align-items:flex-end; }
+  .cc{ display:flex; flex-direction:column; align-items:center; width:0.28in; }
+  .cc .cs{ width:0.22in; height:0.22in; }
+  .cc i{ display:block; width:0.22in; height:0.3in; border-bottom:1.5px solid #0a0a0a; }
+  .cp{ width:0.15in; text-align:center; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:18pt; line-height:1; }
+  .code-key{ display:flex; flex-wrap:wrap; align-items:center; gap:0.04in; }
+  .code-key-label{ margin-right:0.05in; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:10pt; letter-spacing:1.5px; text-transform:uppercase; }
+  .kp{ display:flex; flex-direction:column; align-items:center; width:0.26in; padding:3px 0 2px; border:1px solid #0a0a0a; }
+  .kp .cs{ width:0.16in; height:0.16in; }
+  .kp b{ margin-top:2px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:11pt; line-height:1; }
+  .kp-gap{ width:0.08in; }
+  .maze-rules{ display:flex; flex-direction:column; gap:2px; font-size:8pt; line-height:1.15; }
+  .maze-rules span{ display:flex; align-items:center; gap:5px; }
+  .maze-rules svg{ width:0.16in; height:0.16in; flex-shrink:0; }
+  .maze-svg{ position:absolute; top:0; left:0; width:100%; height:100%; }
+  .maze-end{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:11px; letter-spacing:1px; fill:#0a0a0a; }
+  .ws-theme{ margin:0; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:11pt; line-height:1.05; letter-spacing:1px; text-transform:uppercase; }
+  .ws{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:0.16in; }
+  .ws-svg{ display:block; flex-shrink:0; max-height:100%; height:auto; }
+  .ws-l{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:700; font-size:12.5px; fill:#0a0a0a; }
+  .ws-bank{ margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:3px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:700; font-size:9.5pt; line-height:1.1; letter-spacing:.5px; }
+  .ws-bank li{ display:flex; align-items:center; gap:5px; white-space:nowrap; }
+  .ws-bank li::before{ content:""; flex-shrink:0; width:0.09in; height:0.09in; border:1.2px solid #0a0a0a; }
+  .ph{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; border:1.5px dashed #b5b0a6; text-align:center; color:#6b665d; font-size:10pt; }
+  .ph b{ font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:14pt; color:#0a0a0a; text-transform:uppercase; }
+
+  /* ── PAGE 8 · BACK COVER: the old welcome panel, sized up for the page ── */
+  .w-head{ font-size:46px; margin:16px 0 0; }
+  .w-body{ margin:16px 0 0; }
+  .w-body p,.w-body ul{ font-size:13.5px; line-height:1.6; margin:0 0 9px; }
+  .w-body ul{ padding-left:1.2em; }
+  .w-body > :last-child{ margin-bottom:0; }
+  .qr-hymnal-block{ margin:auto 0; align-self:center; }
+  .w-foot .verse-ref{ font-size:34px; margin:0 0 6px; text-transform:none; }
+  .w-foot .verse-txt{ font-size:14px; line-height:1.5; }
+
+  /* PRINT. Each side prints inside an 11.75in-wide strip with the 11in sheet
+     centred in it, and the browser does the sizing - no zoom knob:
+     - Safari ignores @page{size} (so LANDSCAPE is picked in the dialog) and
+       prints inside the printer's own margins; anything wider than that
+       printable width it shrinks to fit the width.
+     - A bare 11 x 8.5in sheet shrunk to the width is still a hair too tall
+       (the margins take a bigger bite out of 8.5in than out of 11in), so its
+       last sliver spilled onto a blank page - the 2-sheets-become-4-pages
+       bug. The strip's extra 0.75in makes it wider-shaped than any printable
+       area, so once the width fits the height fits too, on any printer.
+     - The booklet folds down the middle and the strip is centred on the
+       paper, so the fold lands in the middle whatever the shrink. Checked
+       through WebKit's print engine: one page per side and the fold at
+       5.50in, with printer margins anywhere from 0 to 0.5in.
+     The on-screen transform:scale() is cancelled: it only shrinks the paint,
+     not the layout. Chrome/Firefox get @page{size} from the script and fit
+     the width the same way. */
+  @media print{
+    body{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .chrome,.sheet-label,.fold,.z-hint,.cf-hint{ display:none!important; }
+    .stage{ padding:0; }
+    .sheet-wrap{ width:11.75in!important; height:8.5in!important; margin:0 auto!important;
+                 overflow:hidden!important; break-inside:avoid; page-break-inside:avoid;
+                 page-break-after:always; break-after:page; }
+    .sheet-wrap:last-of-type{ page-break-after:auto; break-after:auto; }
+    .sheet{ transform:none!important; margin:0 auto!important; box-shadow:none!important; }
+  }
+"""
+
+JS = r"""/* Printing: ask for landscape Letter, but never set an @page margin — Safari
+   and every iOS browser shove the whole sheet up and clip it when a page margin
+   is set (the trap the kids sheet hit). The print CSS fits each side inside the
+   printer's own margins instead. */
+(function(){
+  var pr=document.createElement('style');
+  pr.textContent='@page{ size:11in 8.5in; }';
+  document.head.appendChild(pr);
+  window.addEventListener('beforeprint',function(){ try{window.scrollTo(0,0);}catch(e){} });
+})();
+
+
+    var KEY='__KEY__';
+    var loc=document.location.href.split('#')[0].split('?')[0];
+    var i=loc.indexOf('/'+KEY+'/');
+    var ROOT=(i>=0)?loc.slice(0,i+KEY.length+2):loc.replace(/[^/]*$/,'');
+    var ZINE_URL=ROOT+'zine/', PRAYER_URL=ROOT+'prayer-list/', HYMNAL_URL=ROOT+'hymnal/', EVENTS_URL=ROOT+'events/';
+    var _bl=document.getElementById("bulletin-back"); if(_bl) _bl.href=ROOT+"resources/";
+
+    /* cover date = the coming Sunday */
+    (function(){
+      var M=['January','February','March','April','May','June','July','August','September','October','November','December'];
+      var n=new Date(), add=(7-n.getDay())%7;
+      var s=new Date(n.getFullYear(),n.getMonth(),n.getDate()+add);
+      var t=M[s.getMonth()]+' '+s.getDate();
+      document.querySelectorAll('.cover [data-date]').forEach(function(e){e.textContent=t;});
+    })();
+
+    /* random back-cover verse (from bulletin-verses.txt) */
+    (function(){
+      var VERSES=__VERSES_JSON__;
+      var v=VERSES[Math.floor(Math.random()*VERSES.length)];
+      document.getElementById('v-ref').textContent=v.ref;
+      document.getElementById('v-txt').textContent='“'+v.text+'”';
+    })();
+
+    /* QR codes: drawn at 300px and shown at about an inch, so they print crisp */
+    function qr(id,url){ try{ new QRCode(document.getElementById(id),{text:url,width:300,height:300,correctLevel:QRCode.CorrectLevel.M}); }catch(e){} }
+    function makeQRs(){ qr('qr-hymnal',HYMNAL_URL); qr('qr-zine',ZINE_URL); qr('qr-prayer',PRAYER_URL); qr('qr-events',EVENTS_URL); }
+    if(window.QRCode) makeQRs(); else window.addEventListener('load',makeQRs);
+
+    /* Zine: fills page 4, then page 5 (the center spread), and a long week
+       carries on at the top of page 6. All three are editable. Whole blocks
+       move on first; then the next paragraph is split at a word boundary so
+       each page fills to the bottom. A heading is kept with at least the first
+       line of its paragraph so it never strands alone. While someone types,
+       only whole blocks move (so the caret's own text is never rebuilt and can
+       be put straight back); the full pass with splits runs when they click
+       away. */
+    var Z=[document.getElementById('zine'), document.getElementById('zine5'), document.getElementById('zine6')];
+    var A=[document.getElementById('z-area4'), document.getElementById('z-area5'), document.getElementById('z-area6')];
+    var overBox=document.getElementById('z-over'), warn=document.getElementById('zine-warn');
+    var ZINE_DEFAULT=Z[0].innerHTML;
+    function fits(k){ return Z[k].scrollHeight<=A[k].clientHeight; }
+    function zineHost(n){ for(var k=0;k<Z.length;k++){ if(n && Z[k].contains(n)) return Z[k]; } return null; }
+    function fill(k, light){
+      var cur=Z[k], next=Z[k+1];
+      /* 1) move whole trailing blocks on until this page fits */
+      var guard=0;
+      while(cur.children.length>1 && !fits(k) && guard<400){
+        next.insertBefore(cur.lastElementChild, next.firstChild); guard++;
+      }
+      if(light) return;
+      /* 2) fill the leftover gap by splitting the next block across */
+      var cand=next.firstElementChild, movedHeading=null, split=false;
+      if(cand && cand.tagName==="H4"){
+        cur.appendChild(cand);
+        if(!fits(k)){ next.insertBefore(cand, next.firstChild); cand=null; }
+        else { movedHeading=cand; cand=next.firstElementChild; }
+      }
+      if(cand && cand.tagName==="P"){
+        var words=(cand.textContent||"").trim().split(" ").filter(Boolean);
+        if(words.length>1){
+          var hp=document.createElement("p");
+          hp.setAttribute("data-frag","head");
+          cur.appendChild(hp);
+          var lo=1, hi=words.length-1, best=0;
+          while(lo<=hi){ var m=(lo+hi)>>1; hp.textContent=words.slice(0,m).join(" "); if(fits(k)){ best=m; lo=m+1; } else { hi=m-1; } }
+          /* no lone line on either side of the break: carry at least two lines
+             over, and if that leaves one line behind, move the whole paragraph */
+          var lh=parseFloat(getComputedStyle(cand).lineHeight)||18;
+          function cut(n){ hp.textContent=words.slice(0,n).join(" "); cand.textContent=words.slice(n).join(" "); }
+          if(best>0){
+            cut(best);
+            while(best>0 && cand.offsetHeight<lh*1.5){ best--; cut(best); }
+            if(best>0 && hp.offsetHeight<lh*1.5) best=0;
+          }
+          if(best>0){
+            cand.setAttribute("data-frag","tail");
+            split=true;
+          } else { cur.removeChild(hp); cand.textContent=words.join(" "); }
+        }
+      }
+      if(movedHeading && !split) next.insertBefore(movedHeading, next.firstChild);
+      /* never end a page on a heading */
+      while(cur.children.length>1 && cur.lastElementChild.tagName==="H4" && next.firstElementChild){
+        next.insertBefore(cur.lastElementChild, next.firstChild);
+      }
+    }
+    function flowZine(light){
+      var sel=window.getSelection(), an=null, ao=0;
+      if(light && sel.rangeCount && zineHost(sel.anchorNode)){ an=sel.anchorNode; ao=sel.anchorOffset; }
+      /* pull everything back to page 4; a full pass also undoes earlier splits */
+      for(var k=1;k<Z.length;k++){ while(Z[k].firstChild) Z[0].appendChild(Z[k].firstChild); }
+      if(!light){
+        [].forEach.call(Z[0].querySelectorAll("[data-frag=head]"),function(hd){
+          var tl=hd.nextElementSibling;
+          if(tl && tl.getAttribute("data-frag")==="tail" && tl.tagName===hd.tagName){
+            hd.textContent=(hd.textContent.trim()+" "+tl.textContent.trim()).trim();
+            tl.parentNode.removeChild(tl);
+          }
+        });
+        [].forEach.call(Z[0].querySelectorAll("[data-frag]"),function(e){ e.removeAttribute("data-frag"); });
+      }
+      overBox.hidden=false;                       /* page 6 has to be laid out to be measured */
+      for(var k=0;k<Z.length-1;k++) fill(k, light);
+      overBox.hidden=!Z[2].textContent.trim() && zineHost(an)!==Z[2];
+      if(warn) warn.hidden=overBox.hidden || fits(2);
+      /* the end that didn't fit: a QR code to the whole zine instead */
+      document.getElementById('z-more').hidden=overBox.hidden || fits(2);
+      if(an && document.contains(an)){ zineHost(an).focus({preventScroll:true}); sel.collapse(an, ao); }
+    }
+    function resetZine(){ Z.forEach(function(z){ z.innerHTML=''; }); Z[0].innerHTML=ZINE_DEFAULT; flowZine(); }
+    var t;
+    Z.forEach(function(z){
+      z.addEventListener('input',function(){ clearTimeout(t); t=setTimeout(function(){ flowZine(true); },350); });
+      /* clicked away from the zine (not just onto another of its pages): full pass */
+      z.addEventListener('blur',function(){ setTimeout(function(){ if(!zineHost(document.activeElement)){ clearTimeout(t); flowZine(); } },0); });
+    });
+
+    /* Events: show only those from the coming Sunday (the cover date) up to,
+       but not including, the next Sunday. ISO date strings compare directly. */
+    (function(){
+      var box=document.getElementById("be-list"); if(!box) return;
+      var n=new Date(), add=(7-n.getDay())%7;
+      var start=new Date(n.getFullYear(),n.getMonth(),n.getDate()+add);
+      var end=new Date(start.getFullYear(),start.getMonth(),start.getDate()+7);
+      function k(d){ return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2); }
+      var s=k(start), e=k(end), shown=0;
+      var items=box.querySelectorAll(".be-item");
+      for(var i=0;i<items.length;i++){
+        var d=items[i].getAttribute("data-when");
+        var inWin=(d>=s && d<e);
+        items[i].hidden=!inWin; if(inWin) shown++;
+      }
+      /* Nothing this week? Scan forward from the cover Sunday to the next event
+         (never earlier than the cover Sunday; rows are in date order). */
+      if(shown===0){
+        for(var j=0;j<items.length;j++){
+          if(items[j].getAttribute("data-when")>=s){ items[j].hidden=false; shown=1; break; }
+        }
+      }
+      var none=document.getElementById("be-none"); if(none) none.hidden=shown>0;
+      var ttl=document.getElementById("be-title");
+      if(ttl && shown>0) ttl.textContent = (function(){
+        /* label the fallback so it does not read as this week */
+        for(var j=0;j<items.length;j++){ if(!items[j].hidden){ return items[j].getAttribute("data-when")<e ? "Coming Up" : "Next Up"; } }
+        return "Coming Up";
+      })();
+    })();
+
+    document.getElementById('flip').addEventListener('change',function(e){
+      document.querySelectorAll('.sheet.backside').forEach(function(sh){ sh.classList.toggle('flip',e.target.checked); });
+    });
+
+    /* Prayer list and events: if they run out of room, cut rows from the end
+       and show a QR code to the full list in their place. The prayer list's
+       write-in lines go first. */
+    function fitList(list, rowSel, more, extra){
+      if(!list) return;
+      var rows=list.querySelectorAll(rowSel);
+      [].forEach.call(rows,function(r){ r.classList.remove('cut'); });
+      more.hidden=true; if(extra) extra.hidden=false;
+      function over(){ return list.scrollHeight>list.clientHeight+1; }
+      if(!over()) return;
+      if(extra){ extra.hidden=true; if(!over()) return; }
+      more.hidden=false;
+      for(var i=rows.length-1;i>0 && over();i--){ if(!rows[i].hidden) rows[i].classList.add('cut'); }
+    }
+    function fitLists(){
+      fitList(document.querySelector('.pr-list'),'.pr-row',document.getElementById('pr-more'),document.querySelector('.pr-fill'));
+      fitList(document.getElementById('be-list'),'.be-item',document.getElementById('be-more'));
+    }
+
+    /* Page 7, the kids activity page. The makers are kids.py's own (its
+       KIDS_JS engine, dropped in at render time), sized for a half page.
+       Tap a box on screen for a new one; the code's answer shows above. */
+    var remakeKids=function(){};
+    (function(){
+      var root=document.getElementById('kidp'); if(!root) return;
+      __KIDS_ENGINE__
+      if(typeof secretCode!=='function') return;
+      function read(a){ try{ return JSON.parse(root.getAttribute(a))||[]; }catch(e){ return []; } }
+      var REFS=read('data-verses'), THEMES=read('data-words');
+      var MAKERS={
+        verse:function(body,rng){
+          var ref=pick(REFS.length?REFS:['John 3:16'],rng);
+          body.innerHTML=secretCode(ref,rng);
+          var ans=document.getElementById('kids-answer'); if(ans) ans.textContent=ref;
+        },
+        words:function(body,rng,box){
+          var th=pick(THEMES,rng);
+          box.querySelector('.ws-theme').textContent=th[0];
+          wordSearch(body,pickWords(th[1],rng,8),rng);
+        },
+        maze:function(body,rng){
+          var C=Math.max(8,Math.min(18,Math.floor((body.clientWidth-4)/CELL)));
+          var R=Math.max(6,Math.min(30,Math.floor((body.clientHeight-34)/CELL)));
+          body.innerHTML=drawMaze(makeMaze(R,C,rng));
+        }
+      };
+      var boxes=root.querySelectorAll('.act[data-act]');
+      function make(box,seed){
+        box.setAttribute('data-seed',seed);
+        MAKERS[box.getAttribute('data-act')](box.querySelector('.act-body'),makeRng(seed),box);
+      }
+      [].forEach.call(boxes,function(box){
+        make(box,newSeed());
+        box.addEventListener('click',function(){ make(box,newSeed()); });
+      });
+      /* sizes depend on the fonts: once they're in, lay the same puzzles out again */
+      remakeKids=function(){ [].forEach.call(boxes,function(box){ make(box,+box.getAttribute('data-seed')); }); };
+    })();
+
+    /* order of service: step the text down until every section fits on page 2 */
+    function fitOrder(){
+      var el=document.querySelector('.pad-order'); if(!el) return;
+      var f=12; el.style.fontSize='';
+      while(el.scrollHeight>el.clientHeight+1 && f>8){ f-=0.25; el.style.fontSize=f+'px'; }
+    }
+
+    function scale(){
+      var avail=document.querySelector('.stage').clientWidth-36;   /* minus the stage padding */
+      var s=Math.min(1, avail/(11*96));
+      document.querySelectorAll('.sheet').forEach(function(sh){ sh.style.transform='scale('+s+')'; });
+      document.querySelectorAll('.sheet-wrap').forEach(function(w){ w.style.height=(8.5*96*s)+'px'; w.style.width=(11*96*s)+'px'; });
+    }
+    /* page 6's notes: no room for even a couple of lines (a long zine and a busy week)? drop the heading too */
+    function fitNotes(){
+      var nt=document.querySelector('.notes-title'), nl=document.querySelector('.notes-lines'); if(!nt||!nl) return;
+      nt.hidden=nl.hidden=false;
+      if(nl.clientHeight<60) nt.hidden=nl.hidden=true;
+    }
+    function fitAll(){ scale(); fitOrder(); fitLists(); flowZine(); fitNotes(); }
+    window.addEventListener('resize',fitAll);
+    if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(function(){ fitAll(); remakeKids(); }); }
+    window.addEventListener('load',function(){ fitAll(); setTimeout(fitAll,400); });
+  """
+
+_MARK = ('GRACE&nbsp;H<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="43" fill="none" stroke="#000" stroke-width="6.5"/>'
+         '<g stroke="#000" stroke-width="5.5"><line x1="50" y1="7" x2="50" y2="93"/><line x1="7" y1="50" x2="93" y2="50"/>'
+         '<line x1="19.6" y1="19.6" x2="80.4" y2="80.4"/><line x1="80.4" y1="19.6" x2="19.6" y2="80.4"/></g>'
+         '<circle cx="50" cy="50" r="7.5" fill="#000"/></svg>USE')
+
+BODY = r"""  <div class="chrome">
+    <a class="btn back" id="bulletin-back" href="../resources/">&larr; Resources</a>
+    <h1>Grace House — Sunday bulletin</h1>
+    <p>An 8-page booklet from two sheets of paper. Edit the zine (click it and type) &mdash; it runs across the center spread, and a long week carries on at the top of page 6. This week&rsquo;s events fill in on their own. Print: <b>Landscape, double-sided, Short-edge binding</b>, 100%; for more than one copy, turn on <b>Collate</b>. Slip sheet 2 inside sheet 1, fold them in half together and staple on the fold. Long-edge printer? Tick the box so the backs line up.</p>
+    <div class="bar">
+      <button class="btn primary" onclick="window.print()">Print</button>
+      <label class="chk"><input type="checkbox" id="flip"> My printer flips on the long edge</label>
+      <button class="btn" onclick="resetZine()">Reset zine text</button>
+      <span class="hint">Four pages = both sides of two sheets.</span>
+      <span class="hint">Kids page verse: <b id="kids-answer"></b></span>
+      <span class="warn" id="zine-warn" hidden>The zine is too long for the booklet &mdash; its end is cut off on page 6, with a QR code to the rest.</span>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="sheet-label">Sheet 1, outside &mdash; back cover + cover (prints first)</div>
+    <div class="sheet-wrap"><div class="sheet" id="side1"><div class="flipwrap">
+      <div class="page"><div class="pad">
+        <div class="brandmark">__MARK__</div>
+        <h2 class="h-stencil w-head">__HEAD__</h2>
+        <div class="w-body">__WELCOME__</div>
+        <div class="qr-block qr-hymnal-block"><div class="qr" id="qr-hymnal"></div><div class="qr-cap">Hymnal</div></div>
+        <div class="w-foot">
+          <div class="verse-ref" id="v-ref">__V_REF__</div>
+          <p class="verse-txt" id="v-txt">__V_TXT__</p>
+        </div>
+      </div></div>
+
+      <div class="page cover">
+        __COVER_INNER__
+        <span class="date" data-date>September 20</span>
+      </div>
+      <div class="fold"></div>
+    </div></div></div>
+
+    <div class="sheet-label">Sheet 1, inside &mdash; pages 2 + 7 (prints on the back)</div>
+    <div class="sheet-wrap"><div class="sheet backside" id="side2"><div class="flipwrap">
+      <div class="page"><div class="pad pad-order">
+        __ORDER__
+      </div></div>
+
+      <div class="page"><div class="pad kidp" id="kidp" data-verses="__KID_REFS__" data-words="__KID_WORDS__">
+        __KIDS_PAGE__
+      </div></div>
+      <div class="fold"></div>
+    </div></div></div>
+
+    <div class="sheet-label">Sheet 2, outside &mdash; pages 6 + 3</div>
+    <div class="sheet-wrap"><div class="sheet" id="side3"><div class="flipwrap">
+      <div class="page"><div class="pad">
+        <div class="z-over" id="z-over" hidden>
+          <div class="z-over-label">The zine, continued</div>
+          <div class="z-over-area" id="z-area6"><div class="zine" id="zine6" contenteditable="true"></div></div>
+          <div class="more-qr" id="z-more" hidden><div class="qr" id="qr-zine"></div><div class="qr-cap">Read the rest<br>of the zine</div></div>
+        </div>
+        <h2 class="h-stencil be-title" id="be-title">Coming Up</h2>
+        <div class="be-list" id="be-list">__EVENTS__</div>
+        <div class="more-qr" id="be-more" hidden><div class="qr" id="qr-events"></div><div class="qr-cap">More coming up:<br>all events</div></div>
+        <p class="be-none" id="be-none" hidden>Nothing coming up, what&rsquo;s up?</p>
+        <h3 class="h-stencil notes-title">Notes</h3>
+        <div class="notes-lines"></div>
+      </div></div>
+
+      <div class="page"><div class="pad">
+        <h2 class="h-stencil p-title">Prayer List</h2>
+        <div class="pr-list">
+          __PRAYER_ROWS__
+          <div class="pr-fill"></div>
+        </div>
+        <div class="more-qr" id="pr-more" hidden><div class="qr" id="qr-prayer"></div><div class="qr-cap">See the full<br>prayer list</div></div>
+      </div></div>
+      <div class="fold"></div>
+    </div></div></div>
+
+    <div class="sheet-label">Sheet 2, inside &mdash; pages 4 + 5, the center spread (prints on the back)</div>
+    <div class="sheet-wrap"><div class="sheet backside" id="side4"><div class="flipwrap">
+      <div class="page"><div class="pad">
+        <h2 class="h-stencil z-title">__ZINE_TITLE__</h2>
+        <div class="z-area" id="z-area4"><div class="zine" id="zine" contenteditable="true">__ZINE__</div></div>
+      </div></div>
+
+      <div class="page"><div class="pad">
+        <div class="z-area" id="z-area5"><div class="zine" id="zine5" contenteditable="true"></div></div>
+      </div></div>
+      <div class="z-hint">Tap the zine to edit</div>
+      <div class="fold"></div>
+    </div></div></div>
+  </div>"""
 
 _HEAD = (
     '<!DOCTYPE html>\n<html lang="en">\n<head>\n'
@@ -196,7 +787,7 @@ _HEAD = (
     '<title>Grace House — bulletin</title>\n'
     '<link rel="preconnect" href="https://fonts.googleapis.com">\n'
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-    '<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=Big+Shoulders+Stencil+Text:wght@600;700;800&family=Special+Elite&family=Nunito:wght@500;600&display=swap" rel="stylesheet">\n'
+    '<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Stencil+Display:wght@800;900&family=Big+Shoulders+Stencil+Text:wght@600;700;800&family=Special+Elite&family=Montserrat:wght@400&display=swap" rel="stylesheet">\n'
     '<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>\n'
     '<style>'
 )
@@ -205,13 +796,14 @@ _HEAD = (
 def render_bulletin(key: str, zine_data=None, who_data=None,
                     prayer_data=None, verses=None, events_data=None,
                     today: datetime.date | None = None) -> str:
-    """Full standalone HTML for the printable bulletin.
+    """Full standalone HTML for the printable bulletin booklet.
 
     key         access key (for the QR targets)
     zine_data   server.parse_zine()                    -> (title, sections) | None
     who_data    who.parse_who()                        -> (headline, welcome, sections) | None
     prayer_data prayer.parse_prayers(parse_event_date) -> {"days": [...]} | None
     verses      parse_bulletin_verses()                -> [(text, ref), ...]  (optional)
+    events_data server.parse_events()[0]               -> [(date, lines), ...] | None
     """
     today = today or datetime.date.today()
     if verses is None:
@@ -223,7 +815,7 @@ def render_bulletin(key: str, zine_data=None, who_data=None,
     zine_title = escape(zine_data[0]) if (zine_data and zine_data[0]) else "The Sunday Zine"
     v0_text, v0_ref = verses[0]
 
-    body = BODY
+    body = BODY.replace("__MARK__", _MARK)
     body = body.replace("__PRAYER_ROWS__", _prayer_rows(prayer_data, today))
     body = body.replace("__HEAD__", head_html or "Welcome")
     body = body.replace("__WELCOME__", welcome_html)
@@ -233,7 +825,7 @@ def render_bulletin(key: str, zine_data=None, who_data=None,
     body = body.replace("__EVENTS__", _events_html(events_data))
     cover = _cover_data_uri()
     if cover:
-        cover_inner = f'<img src="{cover}" alt="Grace House cover">'
+        cover_inner = f'<img src="{cover}" alt="Grace House cover" decoding="sync">'
     else:
         cover_inner = ('<div class="cover-fallback" aria-label="Grace House">'
                        '<div class="cf-mark">GRACE<br>HOUSE</div>'
@@ -242,10 +834,15 @@ def render_bulletin(key: str, zine_data=None, who_data=None,
     body = body.replace("__COVER_INNER__", cover_inner)
     body = body.replace("__V_REF__", escape(v0_ref))
     body = body.replace("__V_TXT__", "“" + escape(v0_text) + "”")
+    kids_inner, kid_refs, kid_words, kids_engine = _kids_page(verses)
+    body = body.replace("__KIDS_PAGE__", kids_inner)
+    body = body.replace("__KID_REFS__", kid_refs)
+    body = body.replace("__KID_WORDS__", kid_words)
 
     verses_json = json.dumps([{"ref": r, "text": t} for (t, r) in verses],
                              ensure_ascii=False)
-    script = JS.replace("__KEY__", key).replace("__VERSES_JSON__", verses_json)
+    script = (JS.replace("__KEY__", key).replace("__VERSES_JSON__", verses_json)
+              .replace("__KIDS_ENGINE__", kids_engine))
 
     return (_HEAD + CSS + "</style>\n</head>\n<body>\n"
             + body + "\n<script>" + script + "</script>\n</body>\n</html>\n")
