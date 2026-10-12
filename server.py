@@ -157,6 +157,7 @@ VERSES_PATH = HERE / "verses.txt"
 EVENTS_PATH = HERE / "events.txt"
 WORDS_PATH = HERE / "words.txt"
 PROMPTS_PATH = HERE / "prompts.txt"
+BIBLE_MAZE_PATH = HERE / "bible-maze.html"
 DEFAULT_PORT = 8000
 
 # Auto-scroll speed for songs with no [Speed:X] line. On screen, speed 1
@@ -341,6 +342,7 @@ SECTIONS = [
 #   ("tracts",     "Tracts",          "Free to download"),
     ("resources",    "Resources",         "Gospel prints, tracts, and more"),    
     ("kids",       "Kids Activities", "Mazes, secret codes & word searches"),
+    ("bible-maze", "Bible Maze",      "A Bible trivia adventure"),
 ]
 READY_SECTIONS = {"zine", "hymnal", "kids", "events"}
 
@@ -361,6 +363,8 @@ def section_ready(slug: str) -> bool:
         return parse_resources() is not None
     if slug == "events":
         return EVENTS_PATH.exists()
+    if slug == "bible-maze":
+        return BIBLE_MAZE_PATH.exists()
     return slug in READY_SECTIONS
 
 
@@ -2474,6 +2478,18 @@ def render_events_page(key: str) -> str:
     return page("Events — Grace House", body, key)
 
 
+def render_game_page(key: str) -> str:
+    """Bible Maze — the game is one self-contained HTML file (bible-maze.html),
+    served as-is with no site chrome. The only change is a "← HOME" link added
+    to the line of controls under the game. It's relative ("../"), so the page
+    must be reached as /{key}/bible-maze/ with the trailing slash — the front
+    page links it that way, and the server redirects to it."""
+    html = BIBLE_MAZE_PATH.read_text(encoding="utf-8")
+    home = ('<a href="../" style="color:#cfa;text-decoration:none;'
+            'margin-right:14px">&larr; HOME</a>')
+    return html.replace('<div id="hud">', '<div id="hud">\n    ' + home, 1)
+
+
 def render_kids_page(key: str) -> str:
     """Kids activity sheet. The sheet itself is built in kids.py."""
     events, _problems = parse_events()
@@ -2834,6 +2850,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if inner == "/kids":
             self._send(render_kids_page(key).encode("utf-8"), "text/html; charset=utf-8")
+            return
+        if inner == "/bible-maze" and section_ready("bible-maze"):
+            if not path.endswith("/"):             # its HOME link is relative
+                self._redirect(prefix + "/bible-maze/")
+                return
+            self._send(render_game_page(key).encode("utf-8"),
+                       "text/html; charset=utf-8")
             return
         if inner == "/events" and section_ready("events"):
             self._send(render_events_page(key).encode("utf-8"),
