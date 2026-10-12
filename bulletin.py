@@ -371,18 +371,20 @@ CSS = r"""
   /* the pieces kids.py's makers draw (same as on the kids sheet, a touch smaller) */
   .cs{ display:block; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; overflow:visible; }
   .cs .f{ fill:currentColor; }
-  .code-msg{ display:flex; flex-wrap:wrap; align-items:flex-end; column-gap:0.18in; row-gap:0.1in; }
-  .cw{ display:flex; align-items:flex-end; }
-  .cc{ display:flex; flex-direction:column; align-items:center; width:0.28in; }
-  .cc .cs{ width:0.22in; height:0.22in; }
-  .cc i{ display:block; width:0.22in; height:0.3in; border-bottom:1.5px solid #0a0a0a; }
-  .cp{ width:0.15in; text-align:center; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:18pt; line-height:1; }
-  .code-key{ display:flex; flex-wrap:wrap; align-items:center; gap:0.04in; }
+  /* one line, shrunk by the script (--ms) when the verse is long */
+  .code-msg{ --ms:1; display:flex; align-items:flex-end; column-gap:calc(0.18in*var(--ms)); align-self:stretch; min-width:0; overflow:hidden; }
+  .cw{ display:flex; align-items:flex-end; flex-shrink:0; }
+  .cc{ display:flex; flex-direction:column; align-items:center; width:calc(0.28in*var(--ms)); }
+  .cc .cs{ width:calc(0.22in*var(--ms)); height:calc(0.22in*var(--ms)); }
+  .cc i{ display:block; width:calc(0.22in*var(--ms)); height:calc(0.3in*var(--ms)); border-bottom:1.5px solid #0a0a0a; }
+  .cp{ width:calc(0.15in*var(--ms)); text-align:center; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:calc(18pt*var(--ms)); line-height:1; }
+  .code-key{ display:flex; align-items:center; gap:0.04in; align-self:stretch; min-width:0; --ks:1; }
+  .kp-wrap{ display:flex; align-items:center; gap:calc(0.04in*var(--ks)); flex:1; min-width:0; overflow:hidden; }
   .code-key-label{ margin-right:0.05in; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:10pt; letter-spacing:1.5px; text-transform:uppercase; }
-  .kp{ display:flex; flex-direction:column; align-items:center; width:0.26in; padding:3px 0 2px; border:1px solid #0a0a0a; }
-  .kp .cs{ width:0.16in; height:0.16in; }
-  .kp b{ margin-top:2px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:11pt; line-height:1; }
-  .kp-gap{ width:0.08in; }
+  .kp{ display:flex; flex-direction:column; align-items:center; flex-shrink:0; width:calc(0.26in*var(--ks)); padding:3px 0 2px; border:1px solid #0a0a0a; }
+  .kp .cs{ width:calc(0.16in*var(--ks)); height:calc(0.16in*var(--ks)); }
+  .kp b{ margin-top:2px; font-family:'Big Shoulders Stencil Text','Impact',sans-serif; font-weight:800; font-size:calc(11pt*var(--ks)); line-height:1; }
+  .kp-gap{ flex-shrink:0; width:calc(0.08in*var(--ks)); }
   .maze-rules{ display:flex; flex-direction:column; gap:2px; font-size:8pt; line-height:1.15; }
   .maze-rules span{ display:flex; align-items:center; gap:5px; }
   .maze-rules svg{ width:0.16in; height:0.16in; flex-shrink:0; }
@@ -631,10 +633,26 @@ JS = r"""/* Printing: ask for landscape Letter, but never set an @page margin â€
       if(typeof secretCode!=='function') return;
       function read(a){ try{ return JSON.parse(root.getAttribute(a))||[]; }catch(e){ return []; } }
       var REFS=read('data-verses'), THEMES=read('data-words');
+      /* The coded verse and its key are wider than this half page can always
+         fit, so each shrinks (symbols, blanks and letters together) until it
+         fits on one line. */
+      function shrinkToFit(el, box, prop){
+        for(var k=1; box.scrollWidth>box.clientWidth+1 && k>0.5; ){ k-=0.03; el.style.setProperty(prop,k); }
+      }
+      function fitCode(body){
+        var msg=body.querySelector('.code-msg'), key=body.querySelector('.code-key');
+        if(msg) shrinkToFit(msg, msg, '--ms');
+        if(!key) return;
+        var wrap=document.createElement('div'); wrap.className='kp-wrap';
+        [].slice.call(key.querySelectorAll('.kp,.kp-gap')).forEach(function(k){ wrap.appendChild(k); });
+        key.appendChild(wrap);
+        shrinkToFit(key, wrap, '--ks');
+      }
       var MAKERS={
         verse:function(body,rng){
           var ref=pick(REFS.length?REFS:['John 3:16'],rng);
           body.innerHTML=secretCode(ref,rng);
+          fitCode(body);
           var ans=document.getElementById('kids-answer'); if(ans) ans.textContent=ref;
         },
         words:function(body,rng,box){
