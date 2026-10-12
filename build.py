@@ -29,6 +29,7 @@ Output:
     dist/{key}/zine/index.html           <- the zine (or "coming soon")
     dist/{key}/events/index.html         <- calendar + events (or "coming soon")
     dist/{key}/kids/index.html           <- printable kids activity sheet
+    dist/{key}/bible-maze/index.html     <- the Bible Maze game
     dist/{key}/who-we-are/index.html     <- welcome + how an evening goes
     dist/{key}/poetry/index.html         <- the running chapbook
     dist/{key}/prayer-list/index.html    <- this month's prayer requests
@@ -208,6 +209,14 @@ def build() -> None:
     # in the visitor's browser, so this page never needs a rebuild either.
     if server.section_ready("kids"):
         page_out(f"{key}/kids/index.html", server.render_kids_page(key), key, 1)
+
+    # Bible Maze — /{key}/bible-maze/index.html, from bible-maze.html. The
+    # whole game is that one self-contained file; like the bulletin it has
+    # no site chrome (no <base href>), so it's written directly, not through
+    # page_out(). Its HOME link is relative and works from this folder.
+    if server.section_ready("bible-maze"):
+        write(f"{key}/bible-maze/index.html", server.render_game_page(key))
+        print("Bible Maze: built")
 
     # Who We Are — /{key}/who-we-are/index.html, from who-we-are.txt.
     if server.section_ready("who-we-are"):
