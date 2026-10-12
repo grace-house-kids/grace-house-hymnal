@@ -287,9 +287,9 @@ CSS = r"""
   .cf-hint{ font-family:'Special Elite',monospace; font-size:11px; line-height:1.4; color:#b00; }
 
   /* ── PAGE 2 · ORDER OF SERVICE ─────────────────────── */
-  /* sized in em off the page's font-size, which the script lowers a step at a
-     time if a long order of service would run off the bottom */
-  .pad-order{ justify-content:space-between; font-size:12px; }
+  /* sized in em off the page's font-size, which the script sets to the
+     largest that fits (up to 15px), so the sections fill the page */
+  .pad-order{ justify-content:flex-start; font-size:12px; }
   .svc{ padding:.9em 0 1em; border-top:2px solid #000; }
   .svc:first-of-type{ border-top:0; padding-top:0; }
   .svc-top{ display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
@@ -679,11 +679,14 @@ JS = r"""/* Printing: ask for landscape Letter, but never set an @page margin �
       remakeKids=function(){ [].forEach.call(boxes,function(box){ make(box,+box.getAttribute('data-seed')); }); };
     })();
 
-    /* order of service: step the text down until every section fits on page 2 */
+    /* order of service: the largest text (8 to 15px) that still fits page 2 */
     function fitOrder(){
       var el=document.querySelector('.pad-order'); if(!el) return;
-      var f=12; el.style.fontSize='';
-      while(el.scrollHeight>el.clientHeight+1 && f>8){ f-=0.25; el.style.fontSize=f+'px'; }
+      function fits(f){ el.style.fontSize=f+'px'; return el.scrollHeight<=el.clientHeight+1; }
+      var lo=8, hi=15;
+      if(fits(hi)) return;
+      while(hi-lo>0.2){ var m=(lo+hi)/2; if(fits(m)) lo=m; else hi=m; }
+      fits(lo);
     }
 
     function scale(){
@@ -698,9 +701,14 @@ JS = r"""/* Printing: ask for landscape Letter, but never set an @page margin �
       nt.hidden=nl.hidden=false;
       if(nl.clientHeight<60) nt.hidden=nl.hidden=true;
     }
-    function fitAll(){ scale(); fitOrder(); fitLists(); flowZine(); fitNotes(); }
+    /* Everything that measures runs again whenever fonts finish loading (a
+       measurement taken with a fallback font is wrong), but never while the
+       page is being printed: the print layout isn't the one to measure. */
+    function printing(){ return window.matchMedia && window.matchMedia('print').matches; }
+    function fitAll(){ if(printing()) return; scale(); fitOrder(); fitLists(); flowZine(); fitNotes(); }
     window.addEventListener('resize',fitAll);
     if(document.fonts&&document.fonts.ready){ document.fonts.ready.then(function(){ fitAll(); remakeKids(); }); }
+    if(document.fonts&&document.fonts.addEventListener){ document.fonts.addEventListener('loadingdone',function(){ fitAll(); remakeKids(); }); }
     window.addEventListener('load',function(){ fitAll(); setTimeout(fitAll,400); });
   """
 
