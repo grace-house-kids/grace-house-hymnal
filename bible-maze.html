@@ -65,7 +65,7 @@
 <div id="wrap">
   <canvas id="view" width="320" height="200" tabindex="0"></canvas>
   <div id="hud">
-    <b>W</b>/<b>S</b> move &nbsp; <b>A</b>/<b>D</b> strafe &nbsp; <b>&larr;</b>/<b>&rarr;</b> turn &nbsp; <b>&uarr;</b>/<b>&darr;</b> look &nbsp; <b>SPACE</b> open &nbsp;|&nbsp; <b>drag</b> move/turn &nbsp; <b>tap</b> open &nbsp;|&nbsp; <b>M</b> mute
+    <b>W</b>/<b>S</b> move &nbsp; <b>A</b>/<b>D</b> strafe &nbsp; <b>&larr;</b>/<b>&rarr;</b> turn &nbsp; <b>&uarr;</b>/<b>&darr;</b> look &nbsp; <b>SPACE</b> open &nbsp;|&nbsp; <b>drag</b> move/turn &nbsp; <b>tap</b> open &nbsp;|&nbsp; <b>M</b> mute &nbsp; <b>ESC</b> menu
   </div>
 </div>
 <div id="veil"><span>Tap / click to play<small id="vpass"></small></span></div>
@@ -707,7 +707,7 @@
     { text: "Man shall not live by bread alone.", real: true, ref: "Matthew 4:4" },
     { text: "God helps those who help themselves.", real: false, why: "Ben Franklin said it" },
     { text: "Cleanliness is next to godliness.", real: false, why: "John Wesley said it" },
-    { text: "Money is the root of all evil.", real: false, why: "It says the love of money" },
+    { text: "Charity begins at home.", real: false, why: "An old English proverb" },
     { text: "The lion shall lie down with the lamb.", real: false, why: "The wolf, not the lion" },
     { text: "Spare the rod and spoil the child.", real: false, why: "Samuel Butler, a poem" },
     { text: "God works in mysterious ways.", real: false, why: "William Cowper, a hymn" },
@@ -1524,10 +1524,11 @@
 
   // ── Merchant ────────────────────────────────────────────────────
   // Shows up once per floor, after you've walked a share of it, standing in a
-  // square you've already been through. He asks one question a tier ABOVE your
-  // difficulty (Hard players get one from their missed pool), ONE question
-  // only, then he's gone for the floor either way. Right answer: extra hearts
-  // for this floor's dragon fight, more on easier settings (MERCHANT_REWARD).
+  // square you've already been through. He asks questions a tier ABOVE your
+  // difficulty (Hard players get ones from their missed pool), back to back:
+  // MERCHANT_TRIES chances — 3 on Easy, 2 on Medium, 1 on Hard. Each right
+  // answer banks one heart for this floor's dragon fight; a miss just uses up
+  // that chance. Then he's gone for the floor.
   var difficulty = 'easy';     // 'easy' | 'medium' | 'hard' — chosen on the start screen, kept for the run
   // Start screen: pick a difficulty once, before the first step. It sets which
   // `diff` band chests and the dragon ask from, and the merchant asks one above.
@@ -1603,7 +1604,7 @@
   var merchantAt = 0;          // squares walked before he arrives (set per floor)
   var visitedCount = 0;        // squares walked this floor
   var bonusHearts = 0;         // dragon hearts banked from him this floor
-  var MERCHANT_REWARD = { easy: 3, medium: 2, hard: 1 };   // dragon hearts for his one right answer
+  var MERCHANT_TRIES = { easy: 3, medium: 2, hard: 1 };   // questions he asks (one heart per right answer)
   var MERCHANT_RANGE = 1.2;    // how close you must be to talk to him
   var MERCHANT_MIN_DIST = 5;   // he arrives at least this far (squares) from you
   var MERCHANT_SHARE = 0.25;   // arrives once you've walked this share of the floor
@@ -1692,7 +1693,84 @@
   // Two modes. 'explore' = walk the maze. 'answer' = a trivia prompt is open
   // and the same keys drive the answer highlight instead of the camera.
   // Opening a chest is a commitment: no backing out of an answer.
-  var mode = 'start';           // 'start' (difficulty menu) | 'explore' | 'answer' | 'heads' (dragon)
+  var mode = 'title';           // 'title' | 'start' (difficulty menu) | 'explore' | 'answer' | 'heads' (dragon) | 'pause' | …
+
+  // ── Title screen ──
+  // The user's title art (BIBLE MAZE over a walled maze), baked 1 bit per pixel
+  // (MSB first, row by row): set bits drawn in TITLE_INK (a random colour per
+  // page load) on pure black. Decoded once at load.
+  var TITLE_W = 224, TITLE_H = 151;
+  var TITLE_BITS =
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPCAAAAAAAAAAAAAAAAAAACHgAAAAAAAAAAAAAEQgAAAAAAAAAAAAAAAAA' +
+    'AAgkAAAAAAAAAAAAABVa//////////////////+rMAAAAAAAAAAAAAAR+gAAAAAAAAAAAAAAAAAAJ+QAAAAAAAAAAAAAEAAAAAAA' +
+    'AAAAAAAAAAAAAAAAAAAAAAAAAAAAABgAAAAAAAAAAAAAAAAAAAAADAAAAAAAAAAAAAAGAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAA' +
+    'AAAABAAAAAAAAAAAAAAAAAAAAAAIAAAAAAAAAAAAAAYf4P3+D+D/4A+D4P4P/z/wCAAAAAAAAAAAAAAED/B4f4OAP+AHx8B8D/wf' +
+    '8AgAAAAAAAAAAAAABg4YeHHDgDgwB8fA7A4cHAgIAAAAAAAAAAAAAAQOHHhw44A4EAdNwOwePBxICAAAAAAAAAAAAAAiDhx4cOOA' +
+    'OJAHrcDsGjwcTAIAAAAAAAAAAAAAAA4ceHDjgDkQBznAzAg4HEQAAAAAAAAAAAAAAF4OGHhxw4A7kAe5wc4IeBzEDAAAAAAAAAAA' +
+    'AABADmB4c4OAPwAHOcHOAHAfwAEAAAAAAAAAAAAA1g/4eH+DgD+AB5nHzkDwH8ABAAAAAAAAAAAAABgOGHhxw4Y7AAcBwf4A4BzA' +
+    'DQAAAAAAAAAAAABaDhx4cOOGOYAHgcHOAcAcQA0AAAAAAAAAAAAAAA4ceHDjizkIBwHBzwHHHEYAAAAAAAAAAAAAAAYOHHhw44m4' +
+    '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' +
+    'PBw8PDwAHgAAAfZXjIgAAAAAAAAAa78nw+D7rzwdfHw8AB8PC4H3554sAAAAAAAAAFKVp8Hg//88HHw8PAYfD7/A+97QEAAAAAAA' +
+    'AAAhrrfD4P//PBw8eDwcHw+/wPta6BAAAAAAAAAAAOZfg8B//zwc+DA0HA8Pv8D7v3wQAAAAAAAAABDZ74fg/3g8HPwgAB4PD4Pg' +
+    'f8f6xAAAAAAAAAAhKA+HwGl4PBx8AAAeDw+B4H0AbAAAAAAAAAAEQYRvg8ACeDwcP////g+H8eB/qU4AAAAAAAAAAhVA3wf/8Ph8' +
+    'PP////4PD/nwf2wYEAAAAAAAAAAAIZ4D//B4fBw////+D4f58D+zCzAAAAAAAAAAAEC+ASkA8HgcP+Ah1g8H9fA/wwAAAAAAAAAA' +
+    'AIAAvgFhUPh8PDypshAMBqHwP8ACAAAAAAAAAAAEQL4AAADwfDwAAAAAAAAQ+D9KMAAAAAAAAAAAAii+B/+A8Hw/+B//////wPgf' +
+    'ZAAgAAAAAAAAAAARfA+/gfB4P/w//////+B4H+gAAAAAAAAAAAATInwPn4HgeD/8P/////7wfB+04wAAAAAAAAAAAAL8Dh+D8CA4' +
+    'vBEUxBbB8HwP8KAAAAAAAAAAAACS/B5/g/BYPoQAKwACAeD8D7MgAAAAAAAAAAAARPgeD4PAECAAAAAAAAAAfA/RQAAAAAAAAAAA' +
+    'IE/4H/+H///////8D+P///wP9AAAAAAAAAAAAH2N9D//h////8///h/////+B/FAAAAAAAAAAAFah/g//4P////3//4f/////gPq' +
+    'SAAAAAAAAAABb8H4N30D///3//P9H/n///YD6BAAAAAAAAAAAB9L8DaGArq9QoZutA/+Vg3+A+kvAAAAAAAAAABH6/g+5wfPf1sH' +
+    '13gDw/f//gfycwgAAAAAAAADcuPgAAAAAAAAwAAAB+AAAAAB/MqCAAAAAAAAADJX//////////////////////WBIAAAAAAAAAJ+' +
+    'L//////////////////////8VcAAAAAAAAAAn4///////////////////////lRoAAAAAAAAAYfP//////////////////////6T' +
+    'AAAAAAAAAAJHzgAQ6S0wlOGGnDEHpIIAYwUPYBgAAAAAAAAAqk8/e+7zr3Pff9/tv+997997r1ZAAAAAAAAAAAlNP3vu+r93n3+f' +
+    '77/v/e9/f++QxAAAAAAAAAQCDQAAAAAAAAAAAAAAAAAAAABnKQAAAAAAAAAAAo0/33/e//dvRXi9/3//v3veZqQAAAAAAAAAAABB' +
+    'AAAAAAAAQB10AAAAAAAAAG0qAAAAAAAAAABWDT///v//939RbPHf7/////9uEAAAAAAAAAAAAEUAAAAAAAdgNXYFwAAAAAAAawiA' +
+    'AAAAAAAAABEtP49/3/3nfaVVud/n779+/m8AAAAAAAAAAAABLSuAAAABcmgFcQjAAAAAAKAjUAAAAAAAAAAAAC33z/z+t/dvpXXh' +
+    '2/+9L9H670AAAAAAAAAAAAEN98/+/r/3f6V18d//vW/y+u8CAAAAAAAAAAABTR/AHuSAEGAgFAFf3wFAAL5OQAAAAAAAAAAAEC2v' +
+    '7X//5ZdppXS5///113v/SlAAAAAAAAAAAAAEI0g1IYBnYKVV4d6eQUQDlAAoAAAAAAAAAAAeFSBBVYQAAyoldanIXnXgGgAsSQAA' +
+    'AAAAAAAAAAUyhRUBQAQqpVSoCg80YAAlahAAAAAAAAAAAAIAAAQiEBRICA/wQAAhACIYACGoAAAAAAAAAAAAAAAIkAgAAAEZ0EAB' +
+    'AEABEAABgAAAAAAAAAAABG+GwtQ9Qp4tOzow0QkrjKuiwgAAAAAAAAAAAAAAEbFAUhVkQL/+QQwxU+j1bBAAAAAAAAAAAAAAAKPQ' +
+    'rakPgGvn9FANxH4ioiCgAAAAAAAAAAAAAAAAEVAxRbtZ/H/06iU3rIQAAAAAAAAAAAAAAAAAAACIC6J1Gf//s6CHAWAAIAAAAAAA' +
+    'AAAAAAAAAAAEUEEAKlwf/9gEjqIAACAAAAAAAAAAAAAAAAAAAEAYABJ///3sZojAZiAAAAAAAAAAAAAAAAAAAABAJ0IJf/+KFBgh' +
+    'SAQAAAAAAAAAAAAAAAAAAAAAAAAAHD////4QAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHF89/8f4AAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+    'AACK////+4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAABP////9AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/////oAAAAAAAAAAAAAAA' +
+    'AAAAAAAAAAAAAAAA/////4gAAAAAAAAAAAAAAA==';
+  var titlePix = (function () {
+    var bin = atob(TITLE_BITS), px = new Uint8Array(TITLE_W * TITLE_H);
+    for (var i = 0; i < px.length; i++) px[i] = (bin.charCodeAt(i >> 3) >> (7 - (i & 7))) & 1;
+    return px;
+  })();
+
+  // ── Pause / quit menu (Esc or Enter while exploring) ──
+  // Freezes the world and stops the music. QUIT appears only when the page has
+  // somewhere to go back to: on the Grace House site the server adds a HOME
+  // link under the game, and QUIT follows it.
+  var pauseSel = 0, pauseRects = null, pauseShownAt = 0, pauseHeldMusic = false;
+  function homeHref() { var a = document.querySelector('#hud a[href]'); return a ? a.getAttribute('href') : null; }
+  function pauseRows() { return homeHref() ? ['RESUME', 'QUIT TO MAIN PAGE'] : ['RESUME']; }
   var quiz = null;   // { chest, q, order:[shuffled answer indices], sel, result, resultT }
   var triviaOff = false;   // secret & toggle: chests give their contents with no question
 
@@ -1902,7 +1980,7 @@
     }
     if (!cand.length) return false;
     var pick = cand[(Math.random() * cand.length) | 0];
-    merchant = { x: (pick % MW) + 0.5, y: ((pick / MW) | 0) + 0.5, lastQ: null };
+    merchant = { x: (pick % MW) + 0.5, y: ((pick / MW) | 0) + 0.5, lastQ: null, asked: 0, used: [] };
     merchantState = 'here';
     pickup = 'MERCHANT ARRIVED'; pickupT = 0;
     sfxTrivia();
@@ -1918,14 +1996,18 @@
     if (tier === 'missed' && missed.length) { q = missed[(Math.random() * missed.length) | 0]; fromMissed = true; }
     else {
       var want = tier === 'missed' ? 'hard' : tier;   // no misses yet: a Hard one instead
-      var pool = QUESTIONS.filter(function (qq) { return qq.diff === want && qq !== merchant.lastQ; });
+      var used = merchant.used || [];
+      var pool = QUESTIONS.filter(function (qq) { return qq.diff === want && used.indexOf(qq) < 0; });
+      if (!pool.length) pool = QUESTIONS.filter(function (qq) { return qq.diff === want && qq !== merchant.lastQ; });
       if (!pool.length) pool = QUESTIONS.filter(function (qq) { return qq.diff === want; });
       if (!pool.length) pool = QUESTIONS;
       q = pool[(Math.random() * pool.length) | 0];
       tier = want;
     }
     merchant.lastQ = q;
+    (merchant.used = merchant.used || []).push(q);
     quiz = { merchant: true, tier: fromMissed ? 'missed' : tier, fromMissed: fromMissed,
+             n: (merchant.asked || 0) + 1, of: MERCHANT_TRIES[difficulty] || 1,
              q: q, order: shuffle(q.a.length), sel: 0, result: null, resultT: 0 };
     sfxTrivia();
     mode = 'answer';
@@ -1933,10 +2015,9 @@
   }
   function merchantResolve(right) {
     if (right) {
-      var gain = MERCHANT_REWARD[difficulty] || 1;
-      bonusHearts += gain;
+      bonusHearts++;
       if (quiz.fromMissed) { var mi = missed.indexOf(quiz.q); if (mi >= 0) missed.splice(mi, 1); }   // learned it
-      quiz.reward = gain > 1 ? 'DRAGON HEARTS +' + gain : 'DRAGON HEART +1';
+      quiz.reward = 'DRAGON HEART +1';
       sfxPickup();
     } else {
       if (missed.indexOf(quiz.q) === -1) missed.push(quiz.q);
@@ -1944,11 +2025,11 @@
     }
   }
   function merchantAfter() {                       // the result banner has closed
-    var right = quiz.result === 'right';
     quiz = null; mode = 'explore';
+    merchant.asked = (merchant.asked || 0) + 1;
+    if (merchant.asked < (MERCHANT_TRIES[difficulty] || 1)) { openMerchant(); return; }   // next chance
     merchant = null; merchantState = 'gone';
-    pickup = right ? 'MERCHANT LEFT' : 'MERCHANT VANISHED'; pickupT = 0;
-    if (!right) { sfxTeleport(); flash = 0.3; }
+    pickup = 'MERCHANT LEFT'; pickupT = 0;
   }
 
   // ── Dragon fight ──
@@ -2056,6 +2137,36 @@
     flash = 0.4;
   }
 
+  // ── Title / pause ──
+  function leaveTitle() {
+    if (performance.now() - startShownAt < 400) return;   // not the tap that lifted the veil
+    mode = 'start'; startShownAt = performance.now();
+  }
+  function openPause() {
+    mode = 'pause'; pauseSel = 0; pauseShownAt = performance.now();
+    keys = {}; touchReset();
+    pauseHeldMusic = !!(music.ctx && music.ctx.state === 'running');
+    if (pauseHeldMusic) music.ctx.suspend();
+  }
+  function closePause() {
+    mode = 'explore';
+    if (pauseHeldMusic && music.ctx) music.ctx.resume();
+    pauseHeldMusic = false;
+  }
+  function pausePick(i) {
+    var row = pauseRows()[i];
+    if (row === 'RESUME') closePause();
+    else if (row === 'QUIT TO MAIN PAGE') window.location.href = homeHref();
+  }
+  function pauseTap(clientX, clientY) {
+    if (!pauseRects || performance.now() - pauseShownAt < 300) return;
+    var pt = canvasPt(clientX, clientY);
+    for (var r = 0; r < pauseRects.length; r++) {
+      var b = pauseRects[r];
+      if (pt.x >= b.x0 && pt.x <= b.x1 && pt.y >= b.y0 && pt.y <= b.y1) { pauseSel = r; pausePick(r); return; }
+    }
+  }
+
   // ── Password entry / popup ──
   function pwPress(i) {                            // act on grid cell i (0..31 letters, then BACK/DEL/OK)
     pwCur = i;
@@ -2140,6 +2251,19 @@
   var lastInput = 'keys';       // 'keys' | 'touch' — whichever the player used last
   window.addEventListener('keydown', function (e) {
     lastInput = 'keys';
+    if (mode === 'title') {
+      if (running && (e.code === 'Space' || e.code === 'Enter')) { leaveTitle(); e.preventDefault(); }
+      return;
+    }
+    if (mode === 'pause') {
+      var nR = pauseRows().length;
+      if (e.code === 'KeyW' || e.code === 'ArrowUp') pauseSel = (pauseSel + nR - 1) % nR;
+      else if (e.code === 'KeyS' || e.code === 'ArrowDown') pauseSel = (pauseSel + 1) % nR;
+      else if (e.code === 'Space' || e.code === 'Enter') pausePick(pauseSel);
+      else if (e.code === 'Escape') closePause();
+      e.preventDefault();
+      return;
+    }
     if (mode === 'password') {
       if (!running) return;
       var ch = (e.key || '').toUpperCase();
@@ -2184,10 +2308,11 @@
     }
     // explore mode
     if (GAME_KEYS[e.code]) { keys[e.code] = true; e.preventDefault(); return; }
-    if (e.code === 'Space' || e.code === 'Enter') {   // context action in range
+    if (e.code === 'Space') {                        // context action in range
       contextAction();
       e.preventDefault(); return;
     }
+    if (e.code === 'Escape' || e.code === 'Enter') { openPause(); e.preventDefault(); return; }   // pause / quit menu
     // Music: M mutes/unmutes the Catacomb soundtrack — for everyone.
     if (e.code === 'KeyM') { musToggleMute(); e.preventDefault(); return; }
     if (!debug) return;              // every key below is a developer key (password DDDDDDDD)
@@ -2229,9 +2354,9 @@
     // Audio may only begin inside a user gesture (this click). Unlock the
     // context, then start this world's track the first time; on later resumes
     // just wake the suspended context so the track continues where it paused.
-    music.unlock();
+    if (mode !== 'pause') music.unlock();            // the pause menu keeps the music stopped
     if (!musStarted) { musStarted = true; musPal = -1; musSwitch(pal); }
-    else if (music.ctx && music.ctx.state === 'suspended') { music.ctx.resume(); }
+    else if (music.ctx && music.ctx.state === 'suspended' && mode !== 'pause') { music.ctx.resume(); }
     last = performance.now();
     requestAnimationFrame(frame);
   }
@@ -2240,7 +2365,7 @@
     keys = {};
     touchReset();                        // drop any held thumb so it can't stick across a blur
     var vp = document.getElementById('vpass');
-    if (vp) vp.textContent = (level > 1 && mode !== 'start' && mode !== 'password') ? 'Password  ' + pwShow(encodePassword()) : '';
+    if (vp) vp.textContent = (level > 1 && mode !== 'start' && mode !== 'password' && mode !== 'title') ? 'Password  ' + pwShow(encodePassword()) : '';
     veil.classList.remove('hidden');
     // Hold the track silently rather than tearing it down, so it resumes intact.
     if (music.ctx && music.ctx.state === 'running') music.ctx.suspend();
@@ -2249,6 +2374,8 @@
   cv.addEventListener('click', function (e) {
     if (!running) { play(); return; }
     if (mode === 'start') startTap(e.clientX, e.clientY);
+    else if (mode === 'title') leaveTitle();
+    else if (mode === 'pause') pauseTap(e.clientX, e.clientY);
     else if (mode === 'verse') closeVerse();
     else if (mode === 'password') pwTap(e.clientX, e.clientY);
     else if (mode === 'passnote') closePass();
@@ -2356,6 +2483,8 @@
       if (mode === 'answer') answerTap(lifted.clientX, lifted.clientY);   // trivia: tap a row to commit
       else if (mode === 'heads') headsTap(lifted.clientX, lifted.clientY); // dragon: tap a head to fight
       else if (mode === 'start') startTap(lifted.clientX, lifted.clientY); // start: tap a difficulty
+      else if (mode === 'title') leaveTitle();                              // title: tap to begin
+      else if (mode === 'pause') pauseTap(lifted.clientX, lifted.clientY); // pause menu
       else if (mode === 'verse') closeVerse();                             // armor verse: tap to continue
       else if (mode === 'password') pwTap(lifted.clientX, lifted.clientY); // password grid
       else if (mode === 'passnote') closePass();                           // new-level password: continue
@@ -2534,7 +2663,8 @@
       }
       return;
     }
-    if (mode === 'heads' || mode === 'start' || mode === 'verse' || mode === 'password' || mode === 'passnote') return;   // frozen on a menu / popup
+    if (mode === 'heads' || mode === 'start' || mode === 'verse' || mode === 'password' || mode === 'passnote' ||
+        mode === 'title' || mode === 'pause') return;   // frozen on a menu / popup
     // Door swings: while opening, advance the animation; when done it's open.
     for (var di = 0; di < doors.length; di++) {
       var dd = doors[di];
@@ -2967,7 +3097,7 @@
         var jbottom = (horizon + lineH / 2 + posZ / ty) | 0;
         drawJesterSprite(jleft, jbottom - jh, jw, jh, ty);
       } else if (s.kind === 'merchant') {
-        var mh = (lineH * 0.95) | 0;
+        var mh = (lineH * MERCHANT_H / JESTER_H) | 0;   // same pixel size as the jester's art
         if (mh < 8) continue;
         var mw = (mh * (MERCHANT_W / MERCHANT_H)) | 0;
         var mleft = (screenX - (mw >> 1)) | 0;
@@ -3292,59 +3422,55 @@
   function drawJesterSprite(left, top, w, h, depth) { blitSprite(JESTER_ART, JESTER_W, JESTER_H, left, top, w, h, depth); }
 
   // ── Merchant billboard ──
-  // PLACEHOLDER art (drawn by code, not from a sheet): a hooded trader with a
-  // sack on his back, a coin pouch and a lantern. Same format as the jester —
-  // '#' ink, 'o' light fill, '+' light halo, '.' clear — so real art drops in.
-  var MERCHANT_W = 34, MERCHANT_H = 48;
+  // Baked from the user's merchant art (45x44: a hooded trader with a walking
+  // staff and a loaded pack) the same way as the jester: '#' = DARK ink,
+  // 'o' = LIGHT (fill and the outline ring), '.' = transparent.
+  var MERCHANT_W = 45, MERCHANT_H = 44;
   var MERCHANT_ART = [
-    "...............+++++..............",
-    "..............++###++.............",
-    ".............++#####++............",
-    "............++#######++...........",
-    "............+#########+...........",
-    "...........++#########++..........",
-    "..........++###########++.........",
-    ".........++#############++........",
-    ".........+####ooooooo####+........",
-    "........++####o##o##o####++.......",
-    "........+####ooooooooo####+.......",
-    "........+####oooo#oooo####+.......",
-    "........+#####ooooooo#####+.......",
-    ".....++++#####o#####o#####+.......",
-    ".....+####################+.......",
-    "..+++++oo++#############+++.+++...",
-    ".++ooooooo+######o######+...+#+...",
-    "++oo#####oo######o######++..+#+...",
-    "+oo#######oo#####o#######+..+#+...",
-    "+o#########o#####o#######++++#++..",
-    "oo#########oo####o#############++.",
-    "o###########o####o##############++",
-    "#################o########+######+",
-    "#################o########+#oooo#+",
-    "#################o########+#oooo#+",
-    "+###########oooooooooooooo+#o##o#+",
-    "+################o##oooo####o##o#+",
-    "++###############o##oooo####oooo#+",
-    ".++##############o##o##o####oooo#+",
-    "..++++++#########o##oooo#########+",
-    "......+##########o##oooo####++++++",
-    "......+##########o##########+.....",
-    "......+##########o##########+.....",
-    ".....++##########o##########++....",
-    ".....+###########o###########+....",
-    ".....+###########o###########+....",
-    ".....+###########o###########+....",
-    "....++###########o###########++...",
-    "....+############o############+...",
-    "....+############o############+...",
-    "....+############o############+...",
-    "...++############o############++..",
-    "...+#############o#############+..",
-    "...+ooooooooooooooooooooooooooo+..",
-    "..++#############o#############++.",
-    "..+#############################+.",
-    "..++++++######+++++++######++++++.",
-    ".......++++++++.....++++++++......"
+    ".........ooooo..oooooo.oooooo................",
+    ".......oo#####oo######o######o...............",
+    "......o##ooooo###ooooo##ooooo#o.........ooo..",
+    ".....o#oo##ooooo##ooooo##ooooo#o.......o###o.",
+    ".....o#o#oo#oooo##oooooo##oooo#o......o#oo#o.",
+    "....o#o#oooo#oooo##ooooo########o....o#oooo#o",
+    "....o#o#o##o#oooo##oooo##########o...o#oo#o#o",
+    "....o#o#oo#o#oooo##ooo############o..o#o#o##o",
+    "....o#o#o##o#oooo##oo####oo####o##o..o#oo##o.",
+    "....o#oo#oo#oooo##oo###o#oooo##o##o..o##o#o..",
+    ".....o#oo##oooo#########ooooooooo#o..o##o#o..",
+    "......o#oooo#############oooooooo#o...o#o#o..",
+    ".......o######oooooo#####o###oo###o...o#oo#o.",
+    "......o#ooooo#########o##oo#ooo#o#o....o#o#o.",
+    ".....o##o#####oo######oo#oooooo#o#o....o#o#o.",
+    ".....o##ooooo##o###oo###o#o#o###o#o...o#oo#o.",
+    "....o#o#ooooo#o#####oo##oo#ooooo##o...o#o##o.",
+    "...o#o##ooooo#o####o#oo#oooo###oo#o...o#o#o..",
+    "..o#ooo#o#ooo#o###ooo#o##oooooooo#o...o#o#o..",
+    "..o#oo#o######o##oooo##o##oooooo##o...o#o#o..",
+    ".o#######oooo#o##ooooo#o####o#o###o...o#o#o..",
+    ".o#oooo##o###o##ooooo############o#ooo####o..",
+    "o########o#o#o##oooo##ooo#o###o##oo###oo#o#o.",
+    "o##o#####oo#o##ooo##o#ooo#oo#o##ooooo#o#oo#o.",
+    "o########o##o##o##ooo#ooo#o#oo##ooooo#o##o#o.",
+    "o########o#oo##o#ooooo###o#ooo###ooooo##o##o.",
+    ".o######oo#oo##oooooo#o#oo#oo##oo#####o#o#o..",
+    "..o#####o#o#oo##ooo##o##oo#oo#o..oooooo#o#o..",
+    "...oooo#o#oo#o######o##ooo#oo#o.......o#o#o..",
+    ".......o#####o#########ooo####o.......o#o#o..",
+    "......o##ooo##o###oooo######o#o.......o#o#o..",
+    "......o##########ooooooooo#ooo#o......o#o#o..",
+    "......o#ooooo#oo#ooooooooo#ooo#o.....o##o#o..",
+    ".....o#########o#oooooooo#ooooo#o....o#oo#o..",
+    ".....o##o######o#oooooooo#ooooo#o....o#o#o...",
+    ".....o#########o####ooo#o#oo####o....o#o#o...",
+    ".....o#########ooo#############o.....o#o#o...",
+    "......o#######o..o######oo#####o.....o#o#o...",
+    ".......o#####o...o#####o.o#####o.....o#o#o...",
+    "........ooooo...o######o.o####o......o#o#o...",
+    "................o#####o..o####oo.....o#o#o...",
+    "................o#####o..o#####o.....o#o#o...",
+    "................o######o.o######o....o#o#o...",
+    "................o######o.o######o....o###o..."
   ];
   function drawMerchantSprite(left, top, w, h, depth) { blitSprite(MERCHANT_ART, MERCHANT_W, MERCHANT_H, left, top, w, h, depth); }
 
@@ -3723,6 +3849,8 @@
     if (mode === 'answer' && quiz) { drawQuiz(); return; }
     if (mode === 'heads' && boss) { drawHeads(); return; }
     if (mode === 'start') { drawStart(); return; }
+    if (mode === 'title') { drawTitle(); return; }
+    if (mode === 'pause') { drawPause(); return; }
     if (mode === 'verse' && versePop) { drawVerse(); return; }
     if (mode === 'password') { drawPassword(); return; }
     if (mode === 'passnote' && passPop) { drawPassNote(); return; }
@@ -3809,6 +3937,52 @@
     for (var i = 0; i < lines.length; i++) { bit(lines[i], x + pad, ty, DARK, SB); ty += lineH; }
     if (performance.now() - versePop.t0 >= VERSE_GUARD)
       bitOut('SPACE/TAP TO CONTINUE', W >> 1, y + boxH + 8, LIGHT, SB, 'center', 1);
+  }
+
+  // Title: the art centred near the top, prompt underneath.
+  // The title is the one screen outside the floor palettes: pure black, with
+  // the art (and prompt) in a colour picked at random on each page load —
+  // any hue, kept bright enough to read on black.
+  var TITLE_INK = 'hsl(' + ((Math.random() * 360) | 0) + ',' + (65 + ((Math.random() * 30) | 0)) + '%,' +
+                  (58 + ((Math.random() * 14) | 0)) + '%)';
+  function drawTitle() {
+    var keepDark = DARK;
+    DARK = '#000';                                   // bitOut's outline ring uses DARK
+    ctx.fillStyle = DARK; ctx.fillRect(0, 0, W, H);
+    var ox = (W - TITLE_W) >> 1, oy = 8;
+    ctx.fillStyle = TITLE_INK;
+    for (var y = 0; y < TITLE_H; y++) {
+      var run = -1, base = y * TITLE_W;
+      for (var x = 0; x <= TITLE_W; x++) {
+        var on = x < TITLE_W && titlePix[base + x];
+        if (on && run < 0) run = x;
+        else if (!on && run >= 0) { ctx.fillRect(ox + run, oy + y, x - run, 1); run = -1; }
+      }
+    }
+    bitOut('SPACE / TAP TO BEGIN', W >> 1, H - GH * SB - 10, TITLE_INK, SB, 'center', 1);
+    DARK = keepDark;
+  }
+  // Pause / quit: the world frozen and dimmed, the choices, and this level's
+  // password (from level 2 on) so quitting doesn't cost your place.
+  function drawPause() {
+    var lh = GH * SB;
+    ctx.fillStyle = DARK; ctx.globalAlpha = 0.5; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    bitOut('PAUSED', W >> 1, 30, LIGHT, SH, 'center', 1);
+    var rows = pauseRows(), pad = 8, rowH = lh + 8;
+    var boxW = textW('> QUIT TO MAIN PAGE', SB) + pad * 2 + 8, boxH = rows.length * rowH - 4 + pad * 2;
+    var x = (W - boxW) >> 1, y = 64;
+    panel(x, y, boxW, boxH);
+    pauseRects = [];
+    for (var i = 0; i < rows.length; i++) {
+      var rowY = y + pad + i * rowH;
+      pauseRects[i] = { x0: x, y0: rowY - 4, x1: x + boxW, y1: rowY - 4 + rowH };
+      if (i === pauseSel) {
+        ctx.fillStyle = DARK; ctx.fillRect(x + 3, rowY - 3, boxW - 6, rowH - 2);
+        bit('> ' + rows[i], x + pad, rowY, LIGHT, SB);
+      } else bit('  ' + rows[i], x + pad, rowY, DARK, SB);
+    }
+    if (level > 1) bitOut('PASSWORD ' + pwShow(encodePassword()), W >> 1, y + boxH + 12, LIGHT, SB, 'center', 1);
+    bitOut('ESC RESUME   SPACE PICK', W >> 1, H - lh - 8, LIGHT, SB, 'center', 1);
   }
 
   // Password entry: the 8 slots up top, the letter grid, the BACK/DEL/OK row,
@@ -3942,9 +4116,9 @@
     var lines = wrapBits(q.q, boxW - pad * 2, SB);
     var boxH = pad + lines.length * lineH + 6 + quiz.order.length * rowH + pad;
     var y = (H - boxH) >> 1;
-    if (quiz.merchant) {                 // which tier he's asking, and what he's offering
+    if (quiz.merchant) {                 // which tier he's asking, and which chance
       bitOut('MERCHANT - ' + quiz.tier, 5, 5, LIGHT, SB, 'left', 1);
-      bitOut('FOR ♥+' + (MERCHANT_REWARD[difficulty] || 1), W - 5, 5, LIGHT, SB, 'right', 1);   // what he's offering
+      bitOut('ASK ' + quiz.n + '/' + quiz.of, W - 5, 5, LIGHT, SB, 'right', 1);   // which chance this is
     }
     if (quiz.jester) bitOut(quiz.result ? quiz.note : 'REAL OR FAKE?', W >> 1, 5, LIGHT, SB, 'center', 1);
     if (quiz.boss) {                     // whose question it is, and what you have left
