@@ -596,7 +596,10 @@
     bleached_salt:   { M:'Dorian',            Root:'A',  Tempo:82, Intensity:'Balanced', Choir:'Off', Lyre:'Woven',     Bright:'On', Seed:3119, Loop:true },  // brightest world: airy chiptune shimmer over a weightless pedal
     terracotta_sun:  { M:'Phrygian Dominant', Root:'D',  Tempo:86, Intensity:'Balanced', Choir:'On',  Lyre:'Cascading', Bass:'Gallop', Bright:'On', Seed:3233, Loop:true },  // desert ride: gallop + sun-glare bright lead
     moss_vellum:     { M:'Dorian',            Root:'G',  Tempo:70, Intensity:'Sparse',   Choir:'Off', Lyre:'Woven',     Seed:3347, Loop:true },
-    amethyst_frost:  { M:'Harmonic Minor',    Root:'C#', Tempo:76,  Intensity:'Balanced', Choir:'On',  Lyre:'Cascading', Bright:'On', Seed:3461, Loop:true }  // icy: glassy bright lead + cascading bell lyre over a still (pedal) drone
+    amethyst_frost:  { M:'Harmonic Minor',    Root:'C#', Tempo:76,  Intensity:'Balanced', Choir:'On',  Lyre:'Cascading', Bright:'On', Seed:3461, Loop:true },  // icy: glassy bright lead + cascading bell lyre over a still (pedal) drone
+    // Not a palette world: the dragon fight's own track, the same on every floor.
+    // Fast and frenzied in an exotic scale, galloping bass, bright lead, choir stabs.
+    dragon_fight:    { M:'Hungarian Minor',   Root:'D',  Tempo:138, Intensity:'Frenzied', Choir:'On',  Lyre:'Sparse',    Bass:'Gallop', Bright:'On', Seed:4401, Loop:true }
   };
   var MUS_VOL = 0.7;                       // master music volume (0..1)
   var music = new CatacombEngine({ volume: MUS_VOL });
@@ -625,6 +628,14 @@
     if (musMuted) { t.textContent = '♪ muted'; return; }
     var r = MUSIC_RULES[musKey(pal)];
     t.textContent = r ? ('♪ ' + r.M + ' · ' + r.Root + ' · ' + r.Tempo + ' bpm') : '';
+  }
+  // The dragon fight swaps in its own track; when the fight ends, the floor's
+  // track comes back (from the top). Before audio is unlocked this does nothing.
+  function musBoss(on) {
+    if (!musStarted) return;
+    if (on) { music.play('dragon_fight'); musPal = -2; }
+    else { musPal = -1; musSwitch(pal); }
+    musTag();
   }
   function musToggleMute() {
     musMuted = !musMuted;
@@ -668,6 +679,11 @@
   //   }
   // Keep `correct` pointing at the right answer's position in `a`. The game
   // shuffles the display order, so position here doesn't affect difficulty.
+  // Fit: questions up to 3 lines in the box (about 69 characters), answers up
+  // to 20 characters. "___" draws as a blank to fill in.
+  // Doctrine: this is a free grace church — salvation is God's gift, received
+  // by faith alone in Christ alone, and can't be lost; works matter for
+  // rewards (the Judgment Seat of Christ), never as a condition of being saved.
   var QUESTIONS = [
     { cat: "people", diff: "easy",
       q: "Who built an ark to survive the flood?",
@@ -683,7 +699,325 @@
       a: ["God", "Adam", "Elijah", "Paul"], correct: 0 },
     { cat: "people", diff: "hard",
       q: "Who was the father of King Solomon?",
-      a: ["David", "Saul", "Samuel", "Jesse"], correct: 0 }
+      a: ["David", "Saul", "Samuel", "Jesse"], correct: 0 },
+    // ── Easy (33) ──
+    { cat: "people", diff: "easy",
+      q: "Who was swallowed by a great fish?",
+      a: ["Jonah", "Peter", "Elijah", "Daniel"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who killed the giant Goliath?",
+      a: ["David", "Saul", "Samson", "Jonathan"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "What is the first book of the Bible?",
+      a: ["Genesis", "Exodus", "Matthew", "Psalms"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who was thrown into the lions' den?",
+      a: ["Daniel", "Joseph", "Jonah", "Elisha"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "How many days did it rain on Noah's ark?",
+      a: ["Forty", "Seven", "Twelve", "Three"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Who was the mother of Jesus?",
+      a: ["Mary", "Martha", "Elisabeth", "Sarah"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Who betrayed Jesus for thirty pieces of silver?",
+      a: ["Judas", "Peter", "Thomas", "Pilate"], correct: 0 },
+    { cat: "places", diff: "easy",
+      q: "In what river was Jesus baptized?",
+      a: ["Jordan", "Nile", "Euphrates", "Tigris"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who led Israel out of Egypt?",
+      a: ["Moses", "Joshua", "Aaron", "Abraham"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "What did God create on the first day?",
+      a: ["Light", "Animals", "Man", "The stars"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "How many apostles did Jesus choose?",
+      a: ["Twelve", "Seven", "Ten", "Forty"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who had a coat of many colours?",
+      a: ["Joseph", "Jacob", "Benjamin", "Esau"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "Romans 6:23 says the gift of God is what?",
+      a: ["Eternal life", "Riches", "A long life", "Wisdom"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "\"For God so loved the ___\" (John 3:16)",
+      a: ["World", "Church", "Righteous", "Angels"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Who walked on the water toward Jesus?",
+      a: ["Peter", "John", "Andrew", "James"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who was the first man?",
+      a: ["Adam", "Abel", "Seth", "Noah"], correct: 0 },
+    { cat: "places", diff: "easy",
+      q: "In what town did Jesus grow up?",
+      a: ["Nazareth", "Bethlehem", "Capernaum", "Jerusalem"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Whose great strength was tied to his hair?",
+      a: ["Samson", "Gideon", "Goliath", "David"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "At Cana, Jesus turned water into what?",
+      a: ["Wine", "Milk", "Oil", "Honey"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "Ephesians 2:8 says we are saved by what?",
+      a: ["Grace through faith", "Good works", "Keeping the law", "Being baptized"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who was Abraham's wife?",
+      a: ["Sarah", "Rebekah", "Rachel", "Leah"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "Jesus told the thief, \"Today shalt thou be with me in ___\"",
+      a: ["Paradise", "Glory", "Zion", "Jerusalem"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Who denied Jesus three times?",
+      a: ["Peter", "Judas", "Thomas", "John"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "On which day did Jesus rise from the dead?",
+      a: ["The third day", "The second day", "The seventh day", "The fortieth day"], correct: 0 },
+    { cat: "places", diff: "easy",
+      q: "Which sea did God part for Moses?",
+      a: ["The Red Sea", "The Dead Sea", "Sea of Galilee", "The Great Sea"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "Who was the first king of Israel?",
+      a: ["Saul", "David", "Solomon", "Samuel"], correct: 0 },
+    { cat: "places", diff: "easy",
+      q: "What did God give Moses on Mount Sinai?",
+      a: ["The commandments", "A golden calf", "A crown", "A harp"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "John 3:36: he that believeth on the Son hath what?",
+      a: ["Everlasting life", "A long life", "Great riches", "Many friends"], correct: 0 },
+    { cat: "people", diff: "easy",
+      q: "How many books are in the Bible?",
+      a: ["Sixty-six", "Seventy-two", "Thirty-nine", "Fifty"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Who climbed a sycamore tree to see Jesus?",
+      a: ["Zacchaeus", "Nicodemus", "Bartimaeus", "Matthew"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Where was baby Jesus laid?",
+      a: ["In a manger", "In a basket", "In a boat", "In a tent"], correct: 0 },
+    { cat: "quotes", diff: "easy",
+      q: "\"I am the way, the truth, and the ___\" (John 14:6)",
+      a: ["Life", "Light", "Door", "Vine"], correct: 0 },
+    { cat: "gospels", diff: "easy",
+      q: "Whom did Jesus raise after four days in the tomb?",
+      a: ["Lazarus", "Jairus", "Stephen", "Simon"], correct: 0 },
+    // ── Medium (42) ──
+    { cat: "people", diff: "medium",
+      q: "Who lived longest in the Bible?",
+      a: ["Methuselah", "Noah", "Adam", "Enoch"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "What was the apostle Paul's earlier name?",
+      a: ["Saul", "Silas", "Stephen", "Simon"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who wrote most of the Psalms?",
+      a: ["David", "Solomon", "Moses", "Asaph"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Which disciple doubted until he saw the risen Jesus?",
+      a: ["Thomas", "Peter", "Philip", "Bartholomew"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who went up to heaven in a whirlwind?",
+      a: ["Elijah", "Elisha", "Enoch", "Moses"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who explained Pharaoh's dreams?",
+      a: ["Joseph", "Daniel", "Moses", "Aaron"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Who came to Jesus by night in John 3?",
+      a: ["Nicodemus", "Joseph of Arimathea", "Lazarus", "Matthew"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "Jesus told Nicodemus, \"Ye must be ___\"",
+      a: ["Born again", "Baptized", "Circumcised", "Perfect"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who led the rebuilding of Jerusalem's walls?",
+      a: ["Nehemiah", "Ezra", "Zerubbabel", "Haggai"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Which queen saved her people from Haman?",
+      a: ["Esther", "Ruth", "Jezebel", "Vashti"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "Who said, \"Whither thou goest, I will go\"?",
+      a: ["Ruth", "Naomi", "Esther", "Hannah"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "What did Esau sell to Jacob for a meal?",
+      a: ["His birthright", "His sheep", "His coat", "His land"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who was the first Christian martyr?",
+      a: ["Stephen", "James", "Peter", "Paul"], correct: 0 },
+    { cat: "places", diff: "medium",
+      q: "On the road to which city was Paul converted?",
+      a: ["Damascus", "Emmaus", "Jericho", "Gaza"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "How long was Lazarus in the tomb?",
+      a: ["Four days", "Three days", "Seven days", "Two days"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "What is the shortest verse in the KJV?",
+      a: ["Jesus wept", "Thou shalt not kill", "Rejoice evermore", "Remember Lot's wife"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "Abraham believed God, and it was counted to him for what?",
+      a: ["Righteousness", "Wisdom", "Obedience", "Riches"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Who was John the Baptist's father?",
+      a: ["Zacharias", "Joseph", "Simeon", "Joachim"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Which apostle was a tax collector?",
+      a: ["Matthew", "Peter", "Andrew", "John"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Which king saw the writing on the wall?",
+      a: ["Belshazzar", "Nebuchadnezzar", "Darius", "Cyrus"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "What did Gideon lay out to test God?",
+      a: ["A fleece", "A lamp", "A stone", "A sword"], correct: 0 },
+    { cat: "places", diff: "medium",
+      q: "Whose walls fell after Israel marched around it?",
+      a: ["Jericho", "Ai", "Babylon", "Nineveh"], correct: 0 },
+    { cat: "places", diff: "medium",
+      q: "To which city was Jonah sent?",
+      a: ["Nineveh", "Tarshish", "Babylon", "Joppa"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Who was high priest the year Jesus died?",
+      a: ["Caiaphas", "Eli", "Zadok", "Aaron"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "\"The just shall live by ___\" (Romans 1:17)",
+      a: ["Faith", "Works", "The law", "Wisdom"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who wrote the most New Testament letters?",
+      a: ["Paul", "Peter", "John", "James"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "John 5:24: he that believeth is passed from death unto what?",
+      a: ["Life", "Glory", "Judgment", "Rest"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Who carried Jesus' cross?",
+      a: ["Simon of Cyrene", "Joseph of Arimathea", "Barabbas", "Nicodemus"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "Which prisoner was set free instead of Jesus?",
+      a: ["Barabbas", "Silas", "Onesimus", "Malchus"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "John 10:28: Jesus' sheep \"shall never ___\"",
+      a: ["Perish", "Sin", "Doubt", "Wander"], correct: 0 },
+    { cat: "gospels", diff: "medium",
+      q: "What did Jesus offer the woman at the well?",
+      a: ["Living water", "Bread", "Wine", "Gold"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who was Abraham's nephew?",
+      a: ["Lot", "Laban", "Nahor", "Terah"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Which book comes right after Malachi?",
+      a: ["Matthew", "Mark", "Genesis", "Acts"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who baptized the Ethiopian eunuch?",
+      a: ["Philip", "Peter", "Paul", "Stephen"], correct: 0 },
+    { cat: "quotes", diff: "medium",
+      q: "Galatians 2:16: we are not justified by the works of the what?",
+      a: ["Law", "Flesh", "Spirit", "Church"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who wrote the book of Acts?",
+      a: ["Luke", "Paul", "Peter", "John"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "How many sons did Jacob have?",
+      a: ["Twelve", "Ten", "Seven", "Fourteen"], correct: 0 },
+    { cat: "places", diff: "medium",
+      q: "Who hid the spies in Jericho?",
+      a: ["Rahab", "Deborah", "Miriam", "Ruth"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "What was the bread from heaven called?",
+      a: ["Manna", "Matzah", "Shewbread", "Leaven"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Which prophet saw a valley of dry bones?",
+      a: ["Ezekiel", "Jeremiah", "Isaiah", "Daniel"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Who led Israel into Canaan after Moses?",
+      a: ["Joshua", "Caleb", "Aaron", "Gideon"], correct: 0 },
+    { cat: "people", diff: "medium",
+      q: "Which prophetess judged Israel under a palm tree?",
+      a: ["Deborah", "Miriam", "Huldah", "Jael"], correct: 0 },
+    // ── Hard (30) ──
+    { cat: "people", diff: "hard",
+      q: "Who was Moses' father-in-law?",
+      a: ["Jethro", "Laban", "Aaron", "Hur"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was Ruth's second husband?",
+      a: ["Boaz", "Obed", "Elimelech", "Mahlon"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Which prophet married Gomer?",
+      a: ["Hosea", "Amos", "Joel", "Micah"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Which left-handed judge killed King Eglon?",
+      a: ["Ehud", "Othniel", "Shamgar", "Jephthah"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who replaced Judas among the twelve?",
+      a: ["Matthias", "Barnabas", "Silas", "Justus"], correct: 0 },
+    { cat: "gospels", diff: "hard",
+      q: "Whose ear did Peter cut off?",
+      a: ["Malchus", "Onesimus", "Eutychus", "Gaius"], correct: 0 },
+    { cat: "places", diff: "hard",
+      q: "Who fell from a window during Paul's sermon?",
+      a: ["Eutychus", "Tychicus", "Trophimus", "Erastus"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "How old was Abraham when Isaac was born?",
+      a: ["One hundred", "Seventy-five", "Ninety", "One hundred twenty"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was the mother of Samuel?",
+      a: ["Hannah", "Peninnah", "Rachel", "Elisabeth"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was Timothy's grandmother?",
+      a: ["Lois", "Eunice", "Lydia", "Priscilla"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "In 1 Timothy 1:15 Paul calls himself chief of whom?",
+      a: ["Sinners", "Apostles", "Saints", "Servants"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "Romans 4:5: God justifies whom?",
+      a: ["The ungodly", "The righteous", "The faithful", "The obedient"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "1 Cor 3:15: saved, \"yet so as by ___\"",
+      a: ["Fire", "Grace", "Faith", "Works"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "2 Cor 5:10: believers will stand before the ___ of Christ",
+      a: ["Judgment seat", "Great white throne", "Mercy seat", "Throne of glory"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was the wife of Aquila?",
+      a: ["Priscilla", "Lydia", "Dorcas", "Phoebe"], correct: 0 },
+    { cat: "places", diff: "hard",
+      q: "Whom did Peter raise from the dead in Joppa?",
+      a: ["Dorcas", "Lydia", "Rhoda", "Eunice"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Which judge's vow cost him his daughter?",
+      a: ["Jephthah", "Gideon", "Samson", "Barak"], correct: 0 },
+    { cat: "places", diff: "hard",
+      q: "On which island did John write Revelation?",
+      a: ["Patmos", "Crete", "Cyprus", "Malta"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was king of Salem and priest of God?",
+      a: ["Melchizedek", "Abimelech", "Jethro", "Zadok"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "What was Daniel's Babylonian name?",
+      a: ["Belteshazzar", "Shadrach", "Abednego", "Meshach"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who told Naaman to wash in the Jordan?",
+      a: ["Elisha", "Elijah", "Gehazi", "Samuel"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "To which tribe did Paul belong?",
+      a: ["Benjamin", "Judah", "Levi", "Ephraim"], correct: 0 },
+    { cat: "gospels", diff: "hard",
+      q: "Which apostle was called Didymus, the twin?",
+      a: ["Thomas", "Jude", "James", "Matthew"], correct: 0 },
+    { cat: "places", diff: "hard",
+      q: "What was the first plague on Egypt?",
+      a: ["Water into blood", "Frogs", "Lice", "Hail"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "\"Believe on the Lord Jesus Christ\" was said to whom?",
+      a: ["Philippian jailer", "Nicodemus", "Cornelius", "A rich young ruler"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Which Moabite was David's great-grandmother?",
+      a: ["Ruth", "Naomi", "Rahab", "Tamar"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was Abraham's father?",
+      a: ["Terah", "Nahor", "Haran", "Lot"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Which king of Judah was crowned at age seven?",
+      a: ["Joash", "Josiah", "Uzziah", "Manasseh"], correct: 0 },
+    { cat: "people", diff: "hard",
+      q: "Who was the Persian king who let the exiles go home?",
+      a: ["Cyrus", "Darius", "Xerxes", "Artaxerxes"], correct: 0 },
+    { cat: "quotes", diff: "hard",
+      q: "John 6:47: he that believeth on me hath what?",
+      a: ["Everlasting life", "A new heart", "Great reward", "A crown"], correct: 0 }
   ];
 
   // ── Jester passages ─────────────────────────────────────────────
@@ -708,13 +1042,39 @@
     { text: "God helps those who help themselves.", real: false, why: "Ben Franklin said it" },
     { text: "Cleanliness is next to godliness.", real: false, why: "John Wesley said it" },
     { text: "Charity begins at home.", real: false, why: "An old English proverb" },
-    { text: "The lion shall lie down with the lamb.", real: false, why: "The wolf, not the lion" },
-    { text: "Spare the rod and spoil the child.", real: false, why: "Samuel Butler, a poem" },
     { text: "God works in mysterious ways.", real: false, why: "William Cowper, a hymn" },
     { text: "This too shall pass.", real: false, why: "A Persian proverb" },
     { text: "To thine own self be true.", real: false, why: "Shakespeare, Hamlet" },
-    { text: "Pride goeth before a fall.", real: false, why: "Destruction, not a fall" },
-    { text: "God will not give you more than you can handle.", real: false, why: "A twist on 1 Cor 10:13" }
+    { text: "In the beginning was the Word, and the Word was with God, and the Word was God.", real: true, ref: "John 1:1" },
+    { text: "For by grace are ye saved through faith; and that not of yourselves: it is the gift of God.", real: true, ref: "Ephesians 2:8" },
+    { text: "God is love.", real: true, ref: "1 John 4:8" },
+    { text: "Jesus Christ the same yesterday, and to day, and for ever.", real: true, ref: "Hebrews 13:8" },
+    { text: "The heavens declare the glory of God; and the firmament sheweth his handywork.", real: true, ref: "Psalm 19:1" },
+    { text: "Rejoice in the Lord alway: and again I say, Rejoice.", real: true, ref: "Philippians 4:4" },
+    { text: "I can do all things through Christ which strengtheneth me.", real: true, ref: "Philippians 4:13" },
+    { text: "Thy word is a lamp unto my feet, and a light unto my path.", real: true, ref: "Psalm 119:105" },
+    { text: "God loveth a cheerful giver.", real: true, ref: "2 Corinthians 9:7" },
+    { text: "There is therefore now no condemnation to them which are in Christ Jesus.", real: true, ref: "Romans 8:1" },
+    { text: "Believe on the Lord Jesus Christ, and thou shalt be saved.", real: true, ref: "Acts 16:31" },
+    { text: "Train up a child in the way he should go: and when he is old, he will not depart from it.", real: true, ref: "Proverbs 22:6" },
+    { text: "Can the Ethiopian change his skin, or the leopard his spots?", real: true, ref: "Jeremiah 13:23" },
+    { text: "Take thine ease, eat, drink, and be merry.", real: true, ref: "Luke 12:19" },
+    { text: "The LORD hath sought him a man after his own heart.", real: true, ref: "1 Samuel 13:14" },
+    { text: "I am escaped with the skin of my teeth.", real: true, ref: "Job 19:20" },
+    { text: "Fight the good fight of faith.", real: true, ref: "1 Timothy 6:12" },
+    { text: "My grace is sufficient for thee.", real: true, ref: "2 Corinthians 12:9" },
+    { text: "Hate the sin, love the sinner.", real: false, why: "Traced to Augustine" },
+    { text: "Moderation in all things.", real: false, why: "An old Greek proverb" },
+    { text: "Every cloud has a silver lining.", real: false, why: "From a Milton poem" },
+    { text: "When God closes a door, he opens a window.", real: false, why: "A popular saying" },
+    { text: "Let go and let God.", real: false, why: "A modern slogan" },
+    { text: "To err is human, to forgive divine.", real: false, why: "Alexander Pope, a poem" },
+    { text: "No man is an island.", real: false, why: "John Donne, Devotions" },
+    { text: "The road to hell is paved with good intentions.", real: false, why: "An old proverb" },
+    { text: "Neither a borrower nor a lender be.", real: false, why: "Shakespeare, Hamlet" },
+    { text: "A penny saved is a penny earned.", real: false, why: "An old English proverb" },
+    { text: "Patience is a virtue.", real: false, why: "From Piers Plowman" },
+    { text: "When in Rome, do as the Romans do.", real: false, why: "Credited to Ambrose" }
   ];
 
   // ── Dungeon generator (seeded) ─────────────────────────────────
@@ -2045,6 +2405,7 @@
              sel: 2, rects: null, lastQ: null };
     bonusHearts = 0;                               // the merchant's hearts are spent on this fight
     mode = 'heads';
+    musBoss(true);                                 // the fight has its own music
     sfxTrivia();
     flash = 0.2;
   }
@@ -2094,6 +2455,7 @@
     MAP[sy] = MAP[sy].substr(0, sx) + '0' + MAP[sy].substr(sx + 1);
     stairs = { x: sx + 0.5, y: sy + 0.5, cx: sx, cy: sy };
     dragon = null; boss = null;
+    musBoss(false);                                // back to the floor's music
     score += 500;
     mode = 'explore';
     pickup = 'THE STAIRS ARE OPEN!'; pickupT = 0;
@@ -2105,6 +2467,7 @@
     // ground you've already walked (so every piece is reachable). Other doors
     // stay as you left them; the key and the missed pool carry over.
     boss = null; mode = 'explore';
+    musBoss(false);                                // back to the floor's music
     dragonDoor.open = false; dragonDoor.opening = false; dragonDoor.anim = 0;
     px = dragonDoor.cx + 0.5; py = dragonDoor.cy - 0.5; ang = -Math.PI / 2;
     armorBits = 0;
@@ -3725,7 +4088,7 @@
     "+":[0,4,4,31,4,4,0],
     "◈":[14,10,14,4,4,6,4],"✓":[0,1,2,4,20,24,0],
     "↑":[4,14,21,4,4,4,0],"↓":[4,4,4,21,14,4,0],
-    "♥":[0,10,31,31,14,4,0],"♡":[0,10,21,17,10,4,0]
+    "♥":[0,10,31,31,14,4,0],"_":[0,0,0,0,0,0,31],"♡":[0,10,21,17,10,4,0]
   };
   var GW = 5, GH = 7, GADV = 6;      // glyph width, height, advance (incl. 1px gap)
 
@@ -4111,11 +4474,12 @@
     ctx.globalAlpha = 1;
 
     var pad = 8, boxW = W - 24, x = 12;
-    var lineH = GH * SB + 4;           // question line height
-    var rowH = GH * SB + 6;            // answer row height
+    var lineH = GH * SB + 3;           // question line height
+    var rowH = GH * SB + 4;            // answer row height (kept snug so a 3-line question with
+                                       // 4 answers, the header and the result banner all fit)
     var lines = wrapBits(q.q, boxW - pad * 2, SB);
     var boxH = pad + lines.length * lineH + 6 + quiz.order.length * rowH + pad;
-    var y = (H - boxH) >> 1;
+    var y = Math.min((H - boxH) >> 1, H - boxH - 8 - GH * SH - 3);   // leave room for the result banner
     if (quiz.merchant) {                 // which tier he's asking, and which chance
       bitOut('MERCHANT - ' + quiz.tier, 5, 5, LIGHT, SB, 'left', 1);
       bitOut('ASK ' + quiz.n + '/' + quiz.of, W - 5, 5, LIGHT, SB, 'right', 1);   // which chance this is
